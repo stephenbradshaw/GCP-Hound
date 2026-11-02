@@ -26,8 +26,10 @@ def get_google_credentials(debug=False):
         creds, _ = google.auth.default()
         # Attach the gcloud account email to the credential when it can be
         # determined locally, so get_active_account can report the identity
-        # instead of the OAuth client id.
-        adc_account = _read_adc_account_email()
+        # instead of the OAuth client id. Prefer the file the credentials
+        # were actually loaded from over the default ADC path.
+        cred_file = _credentials_source_path(creds)
+        adc_account = _read_adc_account_email(cred_file) or _read_adc_account_email()
         cli_account = _read_gcloud_cli_account()
         account_email = adc_account or cli_account
         if account_email:
@@ -37,9 +39,10 @@ def get_google_credentials(debug=False):
                 pass
         if adc_account and cli_account and adc_account != cli_account:
             config_name = _read_gcloud_active_config_name()
+            source = f" ({cred_file})" if cred_file else ""
             print(
-                f"[!] Note: the ADC file records account {adc_account}, while the active "
-                f"gcloud CLI configuration '{config_name}' uses {cli_account}. The "
+                f"[!] Note: the credentials file{source} records account {adc_account}, while "
+                f"the active gcloud CLI configuration '{config_name}' uses {cli_account}. The "
                 f"authenticated identity is verified against the credential token at startup."
             )
         return creds
@@ -167,19 +170,33 @@ def _gcloud_config_dir():
     """gcloud config directory, honoring CLOUDSDK_CONFIG like google.auth does"""
     return os.environ.get("CLOUDSDK_CONFIG") or os.path.expanduser("~/.config/gcloud")
 
-def _read_adc_account_email():
+def _credentials_source_path(creds):
     """
-    Account email recorded in the ADC file. This is the identity that
-    `gcloud auth application-default login` was run with, and the identity
-    the ADC credentials actually act as.
+    File the credentials were loaded from, when google.auth recorded one
+    (_cred_file_path). google.auth may load credentials from
+    GOOGLE_APPLICATION_CREDENTIALS or CLOUDSDK_CONFIG rather than the
+    default gcloud ADC path, so the recorded account can come from a
+    different file than ~/.config/gcloud/application_default_credentials.json.
     """
-    adc_path = os.path.join(_gcloud_config_dir(), "application_default_credentials.json")
+    path = getattr(creds, "_cred_file_path", None)
+    return path if isinstance(path, str) and path else None
+
+def _read_adc_account_email(adc_path=None):
+    """
+    Account email recorded in an authorized-user credentials file (set by
+    `gcloud auth application-default login`). This is recorded metadata and
+    can be stale relative to the file's refresh token.
+    """
+    if not adc_path:
+        adc_path = os.path.join(_gcloud_config_dir(), "application_default_credentials.json")
     if os.path.exists(adc_path):
         try:
             with open(adc_path) as f:
-                account = json.load(f).get("account", "")
-            if _looks_like_email(account):
-                return account
+                info = json.load(f)
+            if info.get("type") == "authorized_user":
+                account = info.get("account", "")
+                if _looks_like_email(account):
+                    return account
         except Exception:
             pass
     return None
@@ -342,8 +359,10 @@ def get_active_account(creds):
     if verified:
         recorded = getattr(creds, "account", None) or getattr(creds, "account_email", None)
         if _looks_like_email(recorded) and recorded != verified:
+            cred_file = _credentials_source_path(creds)
+            source = f" in {cred_file}" if cred_file else " on the credential"
             print(
-                f"[!] Note: the account recorded in the ADC file ({recorded}) differs from "
+                f"[!] Note: the account recorded{source} ({recorded}) differs from "
                 f"the verified credential identity ({verified}); using {verified}. "
                 f"Re-run 'gcloud auth application-default login' to refresh the ADC file."
             )
