@@ -259,7 +259,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
             continue
 
         # User -> log stream (only if user exists)
-        if current_user and current_user != "Unknown":
+        if current_user and current_user != "unknown":
             user_edge = {
                 'start': {'value': current_user},
                 'end': {'value': sink.get('objectId')},
@@ -789,11 +789,11 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             from utils.auth import get_active_account
             current_user = get_active_account(creds).lower()
         except:
-            current_user = "Unknown"
+            current_user = "unknown"
     else:
-        current_user = "Unknown"
+        current_user = "unknown"
     
-    if current_user != "Unknown":
+    if current_user != "unknown":
         current_user_name = current_user.split('@')[0] if '@' in current_user else current_user
         
         clean_properties = {
@@ -989,7 +989,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     os.makedirs("./output", exist_ok=True)
     
     # Dynamic filename generation based on authenticated user
-    if creds and current_user != "Unknown":
+    if creds and current_user != "unknown":
         try:
             from utils.auth import get_safe_output_filename
             output_filename = get_safe_output_filename(current_user)

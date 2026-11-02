@@ -1,5 +1,7 @@
 import os
 import re
+import base64
+import json
 import sqlite3
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as UserCredentials
@@ -22,6 +24,15 @@ def get_google_credentials(debug=False):
     # 2. Fallback: Application Default Credentials (ADC, browser login)
     try:
         creds, _ = google.auth.default()
+        # Attach the gcloud account email to the credential when it can be
+        # determined locally, so get_active_account can report the identity
+        # instead of the OAuth client id.
+        account_email = _read_gcloud_account_email()
+        if account_email:
+            try:
+                creds.account_email = account_email
+            except Exception:
+                pass
         return creds
     except Exception:
         pass
@@ -84,6 +95,7 @@ def get_google_credentials(debug=False):
                 client_secret=client_secret,
                 token_uri=token_uri
             )
+            creds.account_email = active_account
             print(f"[+] Loaded gcloud CLI credentials for: {active_account} (with refresh token)")
             return creds
 
@@ -106,6 +118,7 @@ def get_google_credentials(debug=False):
                 token_uri=token_uri,
                 expiry=expiry
             )
+            creds.account_email = active_account
             print(f"[+] Loaded gcloud CLI access token for: {active_account} (NO refresh token, may expire soon!)")
             return creds
 
@@ -126,16 +139,98 @@ def get_google_credentials(debug=False):
     )
     exit(1)
 
+def _looks_like_email(value):
+    """True when value is a string that looks like an email address"""
+    return isinstance(value, str) and '@' in value and '.' in value.split('@', 1)[1]
+
+def _decode_jwt_email(jwt_value):
+    """Extract the email claim from a JWT (e.g. an id_token), or None"""
+    if not isinstance(jwt_value, str):
+        return None
+    parts = jwt_value.split('.')
+    if len(parts) != 3:
+        return None
+    try:
+        payload = parts[1]
+        payload += '=' * (-len(payload) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload))
+        email = claims.get('email')
+        if _looks_like_email(email):
+            return email
+    except Exception:
+        pass
+    return None
+
+def _read_gcloud_account_email():
+    """
+    Best-effort read of the active gcloud account email from local config:
+    the ADC file's `account` field, or the active account in gcloud's
+    config_default. Returns None when no account email can be found.
+    """
+    adc_path = os.path.expanduser("~/.config/gcloud/application_default_credentials.json")
+    if os.path.exists(adc_path):
+        try:
+            with open(adc_path) as f:
+                account = json.load(f).get("account", "")
+            if _looks_like_email(account):
+                return account
+        except Exception:
+            pass
+
+    config_path = os.path.expanduser("~/.config/gcloud/configurations/config_default")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path) as f:
+                for line in f:
+                    if line.strip().startswith("account ="):
+                        account = line.split("=", 1)[1].strip()
+                        if _looks_like_email(account):
+                            return account
+        except Exception:
+            pass
+    return None
+
 def get_active_account(creds):
     """
-    Returns the authenticated user/service account email if available,
-    otherwise returns a generic unknown string.
+    Return the signed-in identity for the given credentials:
+
+    - Service account credentials: the service account email.
+    - User credentials: the email on the credential (id_token email, token
+      email, or the account email already known to the credential).
+    - "unknown" when no email is available. The OAuth client_id is never
+      returned: for `gcloud auth application-default login` it is the public
+      gcloud client id, not an identity.
     """
-    if hasattr(creds, "service_account_email"):
-        return creds.service_account_email
-    if hasattr(creds, "client_id"):
-        return getattr(creds, "client_id", "unknown/client-id")
-    return "unknown/service-account"
+    if creds is None:
+        return "unknown"
+
+    # Service account: the service account email is the identity
+    sa_email = getattr(creds, "service_account_email", None)
+    if _looks_like_email(sa_email):
+        return sa_email
+
+    # Impersonated credentials: the target principal is the acting identity
+    target_principal = getattr(creds, "target_principal", None)
+    if _looks_like_email(target_principal):
+        return target_principal
+
+    # User: email from the id_token, when the credential carries one
+    email = _decode_jwt_email(getattr(creds, "id_token", None))
+    if email:
+        return email
+
+    # User: some credentials carry the email as the token itself (JWT)
+    email = _decode_jwt_email(getattr(creds, "token", None))
+    if email:
+        return email
+
+    # User: account email already known to the credential
+    for attr in ("account", "account_email", "email"):
+        value = getattr(creds, attr, None)
+        if _looks_like_email(value):
+            return value
+
+    return "unknown"
 
 def get_safe_output_filename(email):
     """
