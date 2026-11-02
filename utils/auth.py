@@ -38,10 +38,9 @@ def get_google_credentials(debug=False):
         if adc_account and cli_account and adc_account != cli_account:
             config_name = _read_gcloud_active_config_name()
             print(
-                f"[!] Note: credentials come from 'gcloud auth application-default login' "
-                f"as {adc_account}, which differs from the active gcloud CLI account "
-                f"{cli_account} (configuration '{config_name}'). API calls run as {adc_account}. "
-                f"To switch: gcloud config set account {cli_account} && gcloud auth application-default login"
+                f"[!] Note: the ADC file records account {adc_account}, while the active "
+                f"gcloud CLI configuration '{config_name}' uses {cli_account}. The "
+                f"authenticated identity is verified against the credential token at startup."
             )
         return creds
     except Exception:
@@ -243,13 +242,69 @@ def _read_gcloud_account_email():
     """
     return _read_adc_account_email() or _read_gcloud_cli_account()
 
+def _lookup_token_email(access_token):
+    """
+    Look up the email an access token was issued for, via Google's identity
+    endpoints (userinfo / tokeninfo). Returns None on any failure.
+    """
+    try:
+        import requests
+    except Exception:
+        return None
+    headers = {"Authorization": f"Bearer {access_token}"}
+    urls = (
+        ("https://www.googleapis.com/oauth2/v1/userinfo", None),
+        ("https://oauth2.googleapis.com/tokeninfo", {"access_token": access_token}),
+    )
+    for url, params in urls:
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=10)
+            if response.status_code == 200:
+                email = response.json().get("email")
+                if _looks_like_email(email):
+                    return email
+        except Exception:
+            continue
+    return None
+
+def _resolve_user_identity_from_token(creds):
+    """
+    Resolve the identity behind user credentials from the live token itself.
+    The account recorded in the ADC file can be stale, so the token is
+    authoritative: refresh the credential if needed (a call to Google's
+    token endpoint, not to any GCP project API) and read the id_token email,
+    or fall back to a userinfo/tokeninfo lookup with the access token.
+    Returns the email, or None. The verified email is cached on the
+    credential as verified_account_email so later calls are free.
+    """
+    if getattr(creds, "refresh_token", None) is None and getattr(creds, "token", None) is None:
+        return None
+    try:
+        from google.auth.transport.requests import Request
+        if not creds.valid:
+            creds.refresh(Request())
+    except Exception:
+        pass
+
+    email = _decode_jwt_email(getattr(creds, "id_token", None))
+    if not email:
+        email = _lookup_token_email(getattr(creds, "token", None))
+    if email:
+        try:
+            creds.verified_account_email = email
+        except Exception:
+            pass
+    return email
+
 def get_active_account(creds):
     """
     Return the signed-in identity for the given credentials:
 
     - Service account credentials: the service account email.
-    - User credentials: the email on the credential (id_token email, token
-      email, or the account email already known to the credential).
+    - User credentials: the email on the credential. The id_token/token email
+      and a resolution against the live token are authoritative; the account
+      email recorded on the credential (ADC file / gcloud config) is only a
+      fallback, since it can be stale.
     - "unknown" when no email is available. The OAuth client_id is never
       returned: for `gcloud auth application-default login` it is the public
       gcloud client id, not an identity.
@@ -277,7 +332,24 @@ def get_active_account(creds):
     if email:
         return email
 
-    # User: account email already known to the credential
+    # User: identity already verified against the live token earlier
+    verified = getattr(creds, "verified_account_email", None)
+    if _looks_like_email(verified):
+        return verified
+
+    # User: resolve the identity from the live token when possible
+    verified = _resolve_user_identity_from_token(creds)
+    if verified:
+        recorded = getattr(creds, "account", None) or getattr(creds, "account_email", None)
+        if _looks_like_email(recorded) and recorded != verified:
+            print(
+                f"[!] Note: the account recorded in the ADC file ({recorded}) differs from "
+                f"the verified credential identity ({verified}); using {verified}. "
+                f"Re-run 'gcloud auth application-default login' to refresh the ADC file."
+            )
+        return verified
+
+    # User: account email already known to the credential (offline fallback)
     for attr in ("account", "account_email", "email"):
         value = getattr(creds, attr, None)
         if _looks_like_email(value):
