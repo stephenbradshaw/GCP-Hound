@@ -24,19 +24,19 @@ def get_google_credentials(debug=False):
     # 2. Fallback: Application Default Credentials (ADC, browser login)
     try:
         creds, _ = google.auth.default()
-        # Attach the gcloud account email to the credential when it can be
-        # determined locally, so get_active_account can report the identity
-        # instead of the OAuth client id. Prefer the file the credentials
-        # were actually loaded from over the default ADC path.
+        # Attach the gcloud account email to the credential when the ADC file
+        # itself records one, so get_active_account can use it as an offline
+        # fallback. The active gcloud CLI account is NOT used as a guess: ADC
+        # and CLI credentials are separate stores, and guessing has proven to
+        # misreport the identity.
         cred_file = _credentials_source_path(creds)
         adc_account = _read_adc_account_email(cred_file) or _read_adc_account_email()
-        cli_account = _read_gcloud_cli_account()
-        account_email = adc_account or cli_account
-        if account_email:
+        if adc_account:
             try:
-                creds.account_email = account_email
+                creds.account_email = adc_account
             except Exception:
                 pass
+        cli_account = _read_gcloud_cli_account()
         if adc_account and cli_account and adc_account != cli_account:
             config_name = _read_gcloud_active_config_name()
             source = f" ({cred_file})" if cred_file else ""
@@ -204,23 +204,43 @@ def _read_adc_account_email(adc_path=None):
 def _read_gcloud_active_config_name():
     """
     Name of the active gcloud CLI configuration (e.g. 'adminin'):
-    CLOUDSDK_ACTIVE_CONFIG_NAME, else the active_config entry in gcloud's
-    properties file, else 'default'.
+    CLOUDSDK_ACTIVE_CONFIG_NAME, else the active_config entry in the
+    [configuration] section of gcloud's properties file, else the plain
+    active_config file written by some gcloud versions, else 'default'.
     """
     name = os.environ.get("CLOUDSDK_ACTIVE_CONFIG_NAME")
     if name:
         return name
-    properties_path = os.path.join(_gcloud_config_dir(), "properties")
+
+    config_dir = _gcloud_config_dir()
+
+    properties_path = os.path.join(config_dir, "properties")
     if os.path.exists(properties_path):
         try:
+            section = None
             with open(properties_path) as f:
                 for line in f:
-                    if line.strip().startswith("active_config"):
-                        name = line.split("=", 1)[1].strip()
-                        if name:
-                            return name
+                    line = line.strip()
+                    if line.startswith("[") and line.endswith("]"):
+                        section = line[1:-1].strip().lower()
+                        continue
+                    if section == "configuration" and line.startswith("active_config"):
+                        value = line.split("=", 1)[1].strip() if "=" in line else ""
+                        if value:
+                            return value
         except Exception:
             pass
+
+    active_config_path = os.path.join(config_dir, "active_config")
+    if os.path.exists(active_config_path):
+        try:
+            with open(active_config_path) as f:
+                value = f.read().strip()
+            if value:
+                return value
+        except Exception:
+            pass
+
     return "default"
 
 def _read_gcloud_cli_account():
