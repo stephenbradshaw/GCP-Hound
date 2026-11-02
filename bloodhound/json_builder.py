@@ -8,9 +8,24 @@ import json
 import re
 
 # ---- Google-managed SA and external user detection utilities ----
+
+# Patterns for Google-managed / Google-owned robot service accounts. These
+# SAs are not returned by serviceAccounts.list but do appear as IAM binding
+# members, so they must be recognized and given nodes.
+GOOGLE_MANAGED_SA_PATTERNS = [
+    r'^service-\d+@gcp-sa-[a-z0-9\-]+\.iam\.gserviceaccount\.com$',
+    r'^\d+@cloudservices\.gserviceaccount\.com$',
+    r'^\d+@cloudbuild\.gserviceaccount\.com$',
+    r'^service-\d+@compute-system\.iam\.gserviceaccount\.com$',
+    r'^service-\d+@gcf-admin-robot\.iam\.gserviceaccount\.com$',
+    r'^service-\d+@containerregistry\.iam\.gserviceaccount\.com$',
+    r'^service-\d+@serverless-robot-prod\.iam\.gserviceaccount\.com$',
+]
+
 def is_google_managed_sa(email):
-    """Detect Google-managed service accounts"""
-    return re.match(r'^service-\d+@gcp-sa-.*\.iam\.gserviceaccount\.com$', email) is not None
+    """Detect Google-managed service accounts (gcp-sa-* and Google robot SAs)"""
+    email = (email or '').strip().lower()
+    return any(re.match(pattern, email) for pattern in GOOGLE_MANAGED_SA_PATTERNS)
 
 def extract_service_name(sa_email):
     """Extract service name from Google-managed SA email"""
@@ -75,6 +90,9 @@ def normalize_variations(text, discovered_projects=None):
     """Generate all possible ID variations for fuzzy matching"""
     variations = set()
     variations.add(text)
+    # Node ids are stored lowercase; include the lowercase form so a
+    # mixed-case member still resolves to its node.
+    variations.add(text.lower())
     
     var1 = text.replace('@', '-').replace('.', '-')
     var2 = text.replace('@', '_').replace('.', '_')
@@ -353,7 +371,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             for binding in policy.get('bindings', []):
                 for member in binding.get('members', []):
                     if member.startswith('serviceAccount:'):
-                        sa_email = member.replace('serviceAccount:', '')
+                        sa_email = member.replace('serviceAccount:', '').lower()
                         if is_google_managed_sa(sa_email):
                             discovered_google_managed_sas.add(sa_email)
 
@@ -388,14 +406,14 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             for variation in normalize_variations(gmsa_email, discovered_project_names):
                 node_id_map[variation] = gmsa_email
 
-    # ---- NEW: External users from IAM bindings ----
+    # ---- NEW: Users from IAM bindings ----
     discovered_users = set()
     if iam_data:
         for policy in iam_data:
             for binding in policy.get('bindings', []):
                 for member in binding.get('members', []):
                     if member.startswith('user:'):
-                        user_email = member.replace('user:', '')
+                        user_email = member.replace('user:', '').lower()
                         discovered_users.add(user_email)
 
     # Create nodes for discovered users (avoid duplicating current user)
@@ -491,6 +509,117 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         for variation in normalize_variations(sa_email, discovered_project_names):
             node_id_map[variation] = sa_email
+
+    # ---- NEW: Principal nodes for the remaining IAM binding members ----
+    # Every principal that appears in a collected binding gets a node
+    # (lowercase id), so edges that start or end at it are kept. Only
+    # principals present in the collected bindings/edges are materialized.
+    if iam_data:
+        for policy in iam_data:
+            for binding in policy.get('bindings', []):
+                for member in binding.get('members', []):
+                    member = (member or '').strip()
+                    if not member:
+                        continue
+
+                    if member.startswith('serviceAccount:'):
+                        sa_email = member.replace('serviceAccount:', '').lower()
+                        if (not sa_email or sa_email in graph.nodes
+                                or sa_email in existing_sa_emails):
+                            continue
+                        if is_google_managed_sa(sa_email):
+                            kinds = ["GCPGoogleManagedSA", "GCPServiceAccount"]
+                            description = f"Google-managed service account: {sa_email}"
+                            resource_type = "Google Managed Service Account"
+                        else:
+                            kinds = ["GCPServiceAccount", "GCPResource"]
+                            description = f"GCP Service Account: {sa_email}"
+                            resource_type = "Service Account"
+                        clean_properties = {
+                            "name": sa_email,
+                            "displayname": sa_email,
+                            "objectid": sa_email,
+                            "email": sa_email,
+                            "platform": "GCP",
+                            "description": description,
+                            "gcpResourceType": resource_type,
+                            "source": "iam_binding"
+                        }
+                        principal_node = Node(
+                            id=sa_email,
+                            kinds=kinds,
+                            properties=Properties(**{k: sanitize_property_value(v) for k, v in clean_properties.items()})
+                        )
+                        graph.add_node(principal_node)
+                        for variation in normalize_variations(sa_email, discovered_project_names):
+                            node_id_map[variation] = sa_email
+
+                    elif member.startswith('group:'):
+                        group_email = member.replace('group:', '').lower()
+                        if not group_email or group_email in graph.nodes:
+                            continue
+                        clean_properties = {
+                            "name": group_email,
+                            "displayname": group_email,
+                            "objectid": group_email,
+                            "email": group_email,
+                            "platform": "GCP",
+                            "description": f"GCP Group: {group_email}",
+                            "gcpResourceType": "Group",
+                            "source": "iam_binding"
+                        }
+                        principal_node = Node(
+                            id=group_email,
+                            kinds=["GCPGroup", "GCPResource"],
+                            properties=Properties(**{k: sanitize_property_value(v) for k, v in clean_properties.items()})
+                        )
+                        graph.add_node(principal_node)
+                        for variation in normalize_variations(group_email, discovered_project_names):
+                            node_id_map[variation] = group_email
+
+                    elif member.startswith('domain:'):
+                        domain_id = member.replace('domain:', '').lower()
+                        if not domain_id or domain_id in graph.nodes:
+                            continue
+                        clean_properties = {
+                            "name": domain_id,
+                            "displayname": domain_id,
+                            "objectid": domain_id,
+                            "platform": "GCP",
+                            "description": f"GCP Domain: {domain_id}",
+                            "gcpResourceType": "Domain",
+                            "source": "iam_binding"
+                        }
+                        principal_node = Node(
+                            id=domain_id,
+                            kinds=["GCPPrincipal", "GCPResource"],
+                            properties=Properties(**{k: sanitize_property_value(v) for k, v in clean_properties.items()})
+                        )
+                        graph.add_node(principal_node)
+                        for variation in normalize_variations(domain_id, discovered_project_names):
+                            node_id_map[variation] = domain_id
+
+                    elif member.lower() in ('allusers', 'allauthenticatedusers'):
+                        principal_id = member.lower()
+                        if principal_id in graph.nodes:
+                            continue
+                        clean_properties = {
+                            "name": principal_id,
+                            "displayname": member,
+                            "objectid": principal_id,
+                            "platform": "GCP",
+                            "description": f"GCP Public Principal: {member}",
+                            "gcpResourceType": "Public Principal",
+                            "source": "iam_binding"
+                        }
+                        principal_node = Node(
+                            id=principal_id,
+                            kinds=["GCPPrincipal", "GCPResource"],
+                            properties=Properties(**{k: sanitize_property_value(v) for k, v in clean_properties.items()})
+                        )
+                        graph.add_node(principal_node)
+                        for variation in normalize_variations(principal_id, discovered_project_names):
+                            node_id_map[variation] = principal_id
 
     # Add projects using ONLY real enumerated data
     for project in projects:
@@ -997,90 +1126,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         'CanModifyIamPolicy', 'CanImpersonate', 'CanCreateKeys'
     }
 
-    # Process edges with RESTORED detailed debugging
-    edges_added = 0
-    skipped_edges = 0
-    
-    print(f"[DEBUG] ✅ Total nodes in graph: {graph.get_node_count()}")
-    print(f"[DEBUG] ✅ Total entries in node_id_map: {len(node_id_map)}")
-    
-    # Generic dataset node existence verification
-    if bigquery_datasets:
-        sample_dataset = bigquery_datasets[0]
-        sample_dataset_id = sample_dataset.get('dataset_id', '')
-        sample_project_id = sample_dataset.get('project', '')
-        if sample_dataset_id and sample_project_id:
-            canonical_id = normalize_dataset_id(sample_dataset_id, sample_project_id)
-            exists_in_graph = canonical_id in graph.nodes
-            exists_in_map = canonical_id in node_id_map
-            print(f"[DEBUG] Sample dataset node in graph: {exists_in_graph}")
-            print(f"[DEBUG] Sample dataset node in mapping: {exists_in_map}")
-    else:
-        print("[DEBUG] No datasets enumerated for verification")
-    
-    for i, edge_data in enumerate(edges):
-        start_id = edge_data.get("start", {}).get("value", "").lower()
-        end_id = edge_data.get("end", {}).get("value", "").lower()
-        kind = fix_edge_name(edge_data.get("kind", "RelatedTo"))
-        
-        # VALIDATION: Skip if either ID is empty
-        if not start_id or not start_id.strip() or not end_id or not end_id.strip():
-            skipped_edges += 1
-            print(f"[DEBUG] ❌ Skipping edge with empty ID: start='{start_id}', end='{end_id}'")
-            continue
-        
-        actual_start = node_id_map.get(start_id, start_id)
-        actual_end = node_id_map.get(end_id, end_id)
-        
-        # Block SA→Project edges for SA-scoped permissions
-        if kind in sa_scoped_edge_types and end_id in all_project_variations:
-            skipped_edges += 1
-            print(f"[DEBUG] ❌ Blocking invalid SA→Project edge: {start_id} --[{kind}]-> {end_id}")
-            continue
-            
-        # Block if target is not a valid node
-        if actual_start not in graph.nodes or actual_end not in graph.nodes:
-            skipped_edges += 1
-            print(f"[DEBUG] ❌ Skipping edge to missing node: {actual_start} -> {actual_end}")
-            continue
-        
-        # Process valid edges
-        edge = Edge(
-            start_node=actual_start,
-            end_node=actual_end,
-            kind=kind
-        )
-        
-        # Convert arrays to strings only for edge properties
-        for key, value in edge_data.get("properties", {}).items():
-            if isinstance(value, list):
-                sanitized_value = ", ".join([str(v) for v in value]) if value else "None"
-            else:
-                sanitized_value = sanitize_property_value(value)
-            edge.set_property(key, sanitized_value)
-        
-        if graph.add_edge(edge):
-            edges_added += 1
-            # Show first 10 successful edges for debugging
-            if edges_added <= 10:
-                print(f"[DEBUG] ✅ Edge #{edges_added}: {actual_start} --[{kind}]-> {actual_end}")
-
-    print(f"[DEBUG] Edges added: {edges_added}/{len(edges)} (skipped {skipped_edges} invalid edges)")
-
-    # Export with schema validation
-    os.makedirs("./output", exist_ok=True)
-    
-    # Dynamic filename generation based on authenticated user
-    if creds and current_user != "unknown":
-        try:
-            from utils.auth import get_safe_output_filename
-            output_filename = get_safe_output_filename(current_user)
-        except Exception:
-            output_filename = "gcp-bhopgraph.json"
-    else:
-        output_filename = "gcp-bhopgraph.json"
-    
-    output_file = os.path.join("./output", output_filename)
     def infer_node_kinds(node_id):
         """
         Infer node kinds and description from ID pattern.
@@ -1180,35 +1225,118 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             ["GCPResource"],
             f"GCP Resource: {node_id}"
         )
-    
+
+    # Build every node BEFORE the edge loop: missing edge endpoints are
+    # created first, not logged and dropped. (This pass used to run after
+    # the edge loop, where edges to missing nodes had already been skipped.)
     for edge_data in edges:
         for endpoint in ["start", "end"]:
-            node_id = edge_data.get(endpoint, {}).get("value")
-            if node_id and node_id not in graph.nodes:
-                # USE IMPROVED infer_node_kinds() FUNCTION (defined above)
-                # detection for 15+ GCP resource types
-                kinds, desc = infer_node_kinds(node_id)
+            raw_id = edge_data.get(endpoint, {}).get("value")
+            node_id = str(raw_id).strip().lower() if raw_id else ""
+            if not node_id:
+                continue
+            resolved_id = node_id_map.get(node_id, node_id)
+            if resolved_id in graph.nodes:
+                continue
+            # USE infer_node_kinds() detection for 15+ GCP resource types
+            kinds, desc = infer_node_kinds(node_id)
+            # Create node with minimal properties
+            graph.add_node(Node(
+                id=resolved_id,
+                kinds=kinds,
+                properties=Properties(
+                    objectid=resolved_id,
+                    platform="GCP",
+                    description=desc
+                )
+            ))
+            for variation in normalize_variations(node_id, discovered_project_names):
+                node_id_map[variation] = resolved_id
 
-                # OLD LOGIC (kept for reference)
-                # if "@gserviceaccount.com" in node_id:
-                #     kinds = ["GCPServiceAccount", "GCPResource"]
-                #     desc = "Auto-created service account node (missing from data)"
-                # elif "logstream:" in node_id or "sink:" in node_id:
-                #     kinds = ["GCPLogSink", "GCPResource"]
-                #     desc = "Auto-created log stream node (missing from data)"
-                # else:
-                #     kinds = ["GCPResource"]
-                #     desc = "Auto-created node (missing from data)"
-                # Create node with minimal properties
-                graph.add_node(Node(
-                    id=node_id,
-                    kinds=kinds,
-                    properties=Properties(
-                        objectid=node_id,
-                        platform="GCP",
-                        description=desc
-                    )
-                ))
+    # Process edges with RESTORED detailed debugging
+    edges_added = 0
+    skipped_edges = 0
+    
+    print(f"[DEBUG] ✅ Total nodes in graph: {graph.get_node_count()}")
+    print(f"[DEBUG] ✅ Total entries in node_id_map: {len(node_id_map)}")
+    
+    # Generic dataset node existence verification
+    if bigquery_datasets:
+        sample_dataset = bigquery_datasets[0]
+        sample_dataset_id = sample_dataset.get('dataset_id', '')
+        sample_project_id = sample_dataset.get('project', '')
+        if sample_dataset_id and sample_project_id:
+            canonical_id = normalize_dataset_id(sample_dataset_id, sample_project_id)
+            exists_in_graph = canonical_id in graph.nodes
+            exists_in_map = canonical_id in node_id_map
+            print(f"[DEBUG] Sample dataset node in graph: {exists_in_graph}")
+            print(f"[DEBUG] Sample dataset node in mapping: {exists_in_map}")
+    else:
+        print("[DEBUG] No datasets enumerated for verification")
+    
+    for i, edge_data in enumerate(edges):
+        start_id = edge_data.get("start", {}).get("value", "").lower()
+        end_id = edge_data.get("end", {}).get("value", "").lower()
+        kind = fix_edge_name(edge_data.get("kind", "RelatedTo"))
+        
+        # VALIDATION: Skip if either ID is empty
+        if not start_id or not start_id.strip() or not end_id or not end_id.strip():
+            skipped_edges += 1
+            print(f"[DEBUG] ❌ Skipping edge with empty ID: start='{start_id}', end='{end_id}'")
+            continue
+        
+        actual_start = node_id_map.get(start_id, start_id)
+        actual_end = node_id_map.get(end_id, end_id)
+        
+        # Block SA→Project edges for SA-scoped permissions
+        if kind in sa_scoped_edge_types and end_id in all_project_variations:
+            skipped_edges += 1
+            print(f"[DEBUG] ❌ Blocking invalid SA→Project edge: {start_id} --[{kind}]-> {end_id}")
+            continue
+            
+        # Block if target is not a valid node
+        if actual_start not in graph.nodes or actual_end not in graph.nodes:
+            skipped_edges += 1
+            print(f"[DEBUG] ❌ Skipping edge to missing node: {actual_start} -> {actual_end}")
+            continue
+        
+        # Process valid edges
+        edge = Edge(
+            start_node=actual_start,
+            end_node=actual_end,
+            kind=kind
+        )
+        
+        # Convert arrays to strings only for edge properties
+        for key, value in edge_data.get("properties", {}).items():
+            if isinstance(value, list):
+                sanitized_value = ", ".join([str(v) for v in value]) if value else "None"
+            else:
+                sanitized_value = sanitize_property_value(value)
+            edge.set_property(key, sanitized_value)
+        
+        if graph.add_edge(edge):
+            edges_added += 1
+            # Show first 10 successful edges for debugging
+            if edges_added <= 10:
+                print(f"[DEBUG] ✅ Edge #{edges_added}: {actual_start} --[{kind}]-> {actual_end}")
+
+    print(f"[DEBUG] Edges added: {edges_added}/{len(edges)} (skipped {skipped_edges} invalid edges)")
+
+    # Export with schema validation
+    os.makedirs("./output", exist_ok=True)
+    
+    # Dynamic filename generation based on authenticated user
+    if creds and current_user != "unknown":
+        try:
+            from utils.auth import get_safe_output_filename
+            output_filename = get_safe_output_filename(current_user)
+        except Exception:
+            output_filename = "gcp-bhopgraph.json"
+    else:
+        output_filename = "gcp-bhopgraph.json"
+    
+    output_file = os.path.join("./output", output_filename)
 
     success = graph.export_to_file(output_file)
     
