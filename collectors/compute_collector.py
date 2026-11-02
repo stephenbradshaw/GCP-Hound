@@ -255,10 +255,10 @@ def build_compute_instance_edges(instances, instance_escalation_analysis, curren
         zone = instance['zone']
         instance_id = f"gcp-compute-instance-{project_id}-{zone}-{instance_name}"
         
-        # Edge: Instance belongs to project
+        # Edge: Instance belongs to project (project nodes use the raw project id)
         edges.append({
             "start": {"value": instance_id},
-            "end": {"value": f"gcp-project-{project_id}"},
+            "end": {"value": project_id},
             "kind": "BelongsTo",
             "properties": {
                 "source": "compute_enumeration",
@@ -274,11 +274,10 @@ def build_compute_instance_edges(instances, instance_escalation_analysis, curren
         for sa_config in instance.get('serviceAccounts', []):
             sa_email = sa_config.get('email')
             if sa_email:
-                sa_id = sa_email.replace('@', '_').replace('.', '_')
-                
+                # Service-account nodes use the raw email
                 edges.append({
                     "start": {"value": instance_id},
-                    "end": {"value": f"gcp-sa-{sa_id}"},
+                    "end": {"value": sa_email},
                     "kind": "UsesServiceAccount",
                     "properties": {
                         "source": "compute_enumeration",
@@ -296,8 +295,9 @@ def build_compute_instance_edges(instances, instance_escalation_analysis, curren
         
         if analysis['escalationRisk'] in ['CRITICAL', 'HIGH', 'MEDIUM']:
             # Edge: User can escalate privileges through compute instance
+            # (the signed-in user node is the email itself, not user-<client id>)
             edges.append({
-                "start": {"value": f"user-{current_user}"},
+                "start": {"value": current_user},
                 "end": {"value": instance_id},
                 "kind": "CanEscalateViaComputeInstance",
                 "properties": {

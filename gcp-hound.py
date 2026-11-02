@@ -571,7 +571,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
             os.makedirs(args.output)
         
         try:
-            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets, folders=folders)
+            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets, folders=folders, instances=instances)
         except Exception as e:
             handle_api_error(e, "BloodHound export", args)
             output_file = None

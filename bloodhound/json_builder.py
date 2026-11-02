@@ -334,7 +334,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
     
     return edges
 
-def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None):
+def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None, instances=None):
     """Export comprehensive GCP data to BloodHound JSON format using ONLY real enumerated data"""
     graph = OpenGraph()  # NO source_kind parameter
     
@@ -347,9 +347,13 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     log_metrics = log_metrics or []
     bigquery_datasets = bigquery_datasets or []
     folders = folders or []
+    instances = instances or []
 
     if folders:
         print(f"[DEBUG] Including {len(folders)} folders")
+
+    if instances:
+        print(f"[DEBUG] Including {len(instances)} compute instances")
     
     if log_sinks or log_buckets or log_metrics:
         total_logging = len(log_sinks) + len(log_buckets) + len(log_metrics)
@@ -994,6 +998,50 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             for variation in normalize_variations(parent, discovered_project_names):
                 node_id_map[variation] = parent
 
+    # Add compute instance nodes using ONLY real enumerated data, using the
+    # same ids the compute edges use (gcp-compute-instance-<project>-<zone>-<name>)
+    for instance in instances:
+        instance_name = instance.get('name', '')
+        project_id = (instance.get('project', '') or '').lower()
+        zone = instance.get('zone', '')
+        if not instance_name or not project_id:
+            print(f"[WARNING] Skipping compute instance with missing name/project: {instance}")
+            continue
+        
+        instance_id = f"gcp-compute-instance-{project_id}-{zone}-{instance_name}"
+        
+        clean_properties = {
+            "name": instance_name,
+            "displayname": instance_name,
+            "objectid": instance_id,
+            "platform": "GCP",
+            "description": f"GCP Compute Instance: {instance_name}",
+            
+            # Real GCP-specific metadata from API
+            "gcpResourceType": "Compute Instance",
+            "project": project_id,
+            "zone": zone,
+            "machineType": instance.get('machineType', 'Unknown'),
+            "status": instance.get('status', 'Unknown'),
+            "region": zone.rsplit('-', 1)[0] if zone and '-' in zone else 'Unknown',
+            
+            # Real security analysis
+            "riskLevel": instance.get('riskLevel', 'Unknown'),
+            "remediationPriority": "Unknown"
+        }
+        
+        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        
+        instance_node = Node(
+            id=instance_id,
+            kinds=["GCPInstance", "GCPResource"],
+            properties=Properties(**sanitized_properties)
+        )
+        graph.add_node(instance_node)
+        
+        for variation in normalize_variations(instance_id, discovered_project_names):
+            node_id_map[variation] = instance_id
+
     # Add current user using real data when possible
     if creds:
         try:
@@ -1175,6 +1223,13 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             return (
                 ["GCPUser", "GCPResource"],
                 f"GCP User: {node_id}"
+            )
+        
+        # Compute instance (gcp-compute-instance-<project>-<zone>-<name>)
+        if node_id.startswith("gcp-compute-instance-"):
+            return (
+                ["GCPInstance", "GCPResource"],
+                f"GCP Compute Instance: {node_id}"
             )
         
         # Project node with gcp-project- prefix
