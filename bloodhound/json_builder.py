@@ -1174,6 +1174,25 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         'CanModifyIamPolicy', 'CanImpersonate', 'CanCreateKeys'
     }
 
+    # Drop SA-scoped edges that target projects BEFORE building nodes, so no
+    # orphan nodes are created for endpoints that only appear on edges the
+    # SA-scoped guard will reject. (These come from privesc edges like
+    # CanEscalateViaIamserviceaccountkeyscreate that fix_edge_name renames
+    # into SA-scoped kinds while still targeting a project.)
+    sa_scoped_blocked = 0
+    kept_edges = []
+    for edge_data in edges:
+        kind = fix_edge_name(edge_data.get("kind", "RelatedTo"))
+        raw_end = edge_data.get("end", {}).get("value", "")
+        end_id = str(raw_end).strip().lower() if raw_end else ""
+        if kind in sa_scoped_edge_types and end_id in all_project_variations:
+            sa_scoped_blocked += 1
+            raw_start = edge_data.get("start", {}).get("value", "")
+            print(f"[DEBUG] ❌ Blocking invalid SA→Project edge: {str(raw_start).strip().lower()} --[{kind}]-> {end_id}")
+            continue
+        kept_edges.append(edge_data)
+    edges = kept_edges
+
     def infer_node_kinds(node_id):
         """
         Infer node kinds and description from ID pattern.
@@ -1376,7 +1395,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             if edges_added <= 10:
                 print(f"[DEBUG] ✅ Edge #{edges_added}: {actual_start} --[{kind}]-> {actual_end}")
 
-    print(f"[DEBUG] Edges added: {edges_added}/{len(edges)} (skipped {skipped_edges} invalid edges)")
+    print(f"[DEBUG] Edges added: {edges_added}/{len(edges) + sa_scoped_blocked} (skipped {skipped_edges} invalid edges, blocked {sa_scoped_blocked} SA-scoped project-target edges)")
 
     # Export with schema validation
     os.makedirs("./output", exist_ok=True)
