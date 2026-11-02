@@ -27,12 +27,21 @@ def get_google_credentials(debug=False):
         # Attach the gcloud account email to the credential when it can be
         # determined locally, so get_active_account can report the identity
         # instead of the OAuth client id.
-        account_email = _read_gcloud_account_email()
+        adc_account = _read_adc_account_email()
+        cli_account = _read_gcloud_cli_account()
+        account_email = adc_account or cli_account
         if account_email:
             try:
                 creds.account_email = account_email
             except Exception:
                 pass
+        if adc_account and cli_account and adc_account != cli_account:
+            print(
+                f"[!] Note: credentials come from 'gcloud auth application-default login' "
+                f"as {adc_account}, which differs from the active gcloud CLI account "
+                f"{cli_account} (gcloud auth list). API calls run as {adc_account}. "
+                f"To switch: gcloud config set account {cli_account} && gcloud auth application-default login"
+            )
         return creds
     except Exception:
         pass
@@ -161,13 +170,17 @@ def _decode_jwt_email(jwt_value):
         pass
     return None
 
-def _read_gcloud_account_email():
+def _gcloud_config_dir():
+    """gcloud config directory, honoring CLOUDSDK_CONFIG like google.auth does"""
+    return os.environ.get("CLOUDSDK_CONFIG") or os.path.expanduser("~/.config/gcloud")
+
+def _read_adc_account_email():
     """
-    Best-effort read of the active gcloud account email from local config:
-    the ADC file's `account` field, or the active account in gcloud's
-    config_default. Returns None when no account email can be found.
+    Account email recorded in the ADC file. This is the identity that
+    `gcloud auth application-default login` was run with, and the identity
+    the ADC credentials actually act as.
     """
-    adc_path = os.path.expanduser("~/.config/gcloud/application_default_credentials.json")
+    adc_path = os.path.join(_gcloud_config_dir(), "application_default_credentials.json")
     if os.path.exists(adc_path):
         try:
             with open(adc_path) as f:
@@ -176,8 +189,15 @@ def _read_gcloud_account_email():
                 return account
         except Exception:
             pass
+    return None
 
-    config_path = os.path.expanduser("~/.config/gcloud/configurations/config_default")
+def _read_gcloud_cli_account():
+    """
+    Active account of the gcloud CLI (config_default). This is NOT
+    necessarily the identity of the ADC credentials - it is only a guess
+    used when the ADC file does not record an account.
+    """
+    config_path = os.path.join(_gcloud_config_dir(), "configurations", "config_default")
     if os.path.exists(config_path):
         try:
             with open(config_path) as f:
@@ -189,6 +209,14 @@ def _read_gcloud_account_email():
         except Exception:
             pass
     return None
+
+def _read_gcloud_account_email():
+    """
+    Best-effort read of the account email to report for ADC credentials:
+    the identity recorded in the ADC file, falling back to the active
+    gcloud CLI account. Returns None when neither is available.
+    """
+    return _read_adc_account_email() or _read_gcloud_cli_account()
 
 def get_active_account(creds):
     """
