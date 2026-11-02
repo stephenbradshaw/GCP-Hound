@@ -793,8 +793,26 @@ class GCPPrivilegeEscalationAnalyzer:
     def build_escalation_edges(self, current_user):
         """
         Build BloodHound edges for all discovered privilege escalation paths.
+
+        SA-scoped permissions (key creation, token generation, actAs, signing,
+        SA IAM policy) act on individual service accounts, so they produce one
+        edge per verified target service account (escalation_targets holds the
+        SA emails verified via testIamPermissions). Project-scoped permissions
+        keep targeting the project. Session edges start at the current user's
+        email itself, matching the identity reported by 'Running as:'.
         """
         edges = []
+        
+        # SA-scoped permissions and their edge kinds (mirrors the mapping in
+        # edge_builder.build_privilege_escalation_edges)
+        sa_scoped_permission_kinds = {
+            'iam.serviceAccountKeys.create': 'CanCreateKeys',
+            'iam.serviceAccounts.getAccessToken': 'CanGetAccessToken',
+            'iam.serviceAccounts.actAs': 'CanImpersonate',
+            'iam.serviceAccounts.signBlob': 'CanSignBlob',
+            'iam.serviceAccounts.signJwt': 'CanSignJWT',
+            'iam.serviceAccounts.setIamPolicy': 'CanModifyIamPolicy'
+        }
         
         for project_result in self.escalation_results:
             project_id = project_result['project']
@@ -803,20 +821,44 @@ class GCPPrivilegeEscalationAnalyzer:
             for method_name, result in project_result['escalation_methods'].items():
                 if result.get('can_escalate'):
                     method_config = self.escalation_methods[method_name]
+                    permission = method_config.get('permission', '')
+                    sa_kind = sa_scoped_permission_kinds.get(permission)
                     
-                    edges.append({
-                        "start": {"value": f"user-{current_user}"},
-                        "end": {"value": f"gcp-project-{project_id}"},
-                        "kind": f"CanEscalateVia{method_name.replace('_', '').title()}",
-                        "properties": {
-                            "source": "privilege_escalation_analysis",
-                            "riskLevel": method_config['risk'],
-                            "description": method_config['description'],
-                            "permission": method_config['permission'],
-                            "escalationMethod": method_name,
-                            "escalationTargets": result.get('escalation_targets', [])
-                        }
-                    })
+                    if sa_kind:
+                        # SA-scoped permission: one edge per verified target SA
+                        for sa_email in result.get('escalation_targets', []):
+                            if not sa_email:
+                                continue
+                            if current_user and str(sa_email).lower() == str(current_user).lower():
+                                continue  # No self-references
+                            edges.append({
+                                "start": {"value": current_user},
+                                "end": {"value": sa_email},
+                                "kind": sa_kind,
+                                "properties": {
+                                    "source": "privilege_escalation_analysis",
+                                    "permission": permission,
+                                    "riskLevel": method_config['risk'],
+                                    "description": method_config['description'],
+                                    "escalationMethod": method_name,
+                                    "projectContext": project_id,
+                                    "escalationTargets": result.get('escalation_targets', [])
+                                }
+                            })
+                    else:
+                        edges.append({
+                            "start": {"value": current_user},
+                            "end": {"value": f"gcp-project-{project_id}"},
+                            "kind": f"CanEscalateVia{method_name.replace('_', '').title()}",
+                            "properties": {
+                                "source": "privilege_escalation_analysis",
+                                "riskLevel": method_config['risk'],
+                                "description": method_config['description'],
+                                "permission": permission,
+                                "escalationMethod": method_name,
+                                "escalationTargets": result.get('escalation_targets', [])
+                            }
+                        })
         
         return edges
     
