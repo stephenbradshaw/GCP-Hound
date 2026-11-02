@@ -289,10 +289,10 @@ def build_gke_edges(clusters, gke_escalation_analysis, current_user):
         project_id = cluster['project']
         cluster_id = f"gcp-gke-cluster-{project_id}-{cluster_name}"
         
-        # Edge: Cluster belongs to project
+        # Edge: Cluster belongs to project (project nodes use the raw project id)
         edges.append({
             "start": {"value": cluster_id},
-            "end": {"value": f"gcp-project-{project_id}"},
+            "end": {"value": project_id},
             "kind": "BelongsTo",
             "properties": {
                 "source": "gke_enumeration",
@@ -310,7 +310,6 @@ def build_gke_edges(clusters, gke_escalation_analysis, current_user):
             service_account = pool_config.get('serviceAccount')
             
             if service_account:
-                sa_id = service_account.replace('@', '_').replace('.', '_')
                 node_pool_id = f"gcp-gke-nodepool-{project_id}-{cluster_name}-{node_pool.get('name')}"
                 
                 # Edge: Node pool belongs to cluster
@@ -326,10 +325,10 @@ def build_gke_edges(clusters, gke_escalation_analysis, current_user):
                     }
                 })
                 
-                # Edge: Node pool uses service account
+                # Edge: Node pool uses service account (SA nodes use the raw email)
                 edges.append({
                     "start": {"value": node_pool_id},
-                    "end": {"value": f"gcp-sa-{sa_id}"},
+                    "end": {"value": service_account},
                     "kind": "UsesServiceAccount",
                     "properties": {
                         "source": "gke_enumeration",
@@ -346,8 +345,9 @@ def build_gke_edges(clusters, gke_escalation_analysis, current_user):
         
         if analysis['escalationRisk'] in ['CRITICAL', 'HIGH', 'MEDIUM']:
             # Edge: User can escalate privileges through GKE cluster
+            # (the signed-in user node is the email itself)
             edges.append({
-                "start": {"value": f"user-{current_user}"},
+                "start": {"value": current_user},
                 "end": {"value": cluster_id},
                 "kind": "CanEscalateViaGKECluster",
                 "properties": {

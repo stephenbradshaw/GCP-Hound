@@ -1042,6 +1042,86 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         for variation in normalize_variations(instance_id, discovered_project_names):
             node_id_map[variation] = instance_id
 
+    # Add group nodes using ONLY real enumerated data (groups were collected
+    # via the Admin SDK but never exported as nodes; edges reference the raw
+    # group email)
+    for group in groups:
+        group_email = (group.get('email', '') or '').strip().lower()
+        if not group_email or group_email in graph.nodes:
+            continue
+        
+        clean_properties = {
+            "name": group_email,
+            "displayname": group.get('name', group_email),
+            "objectid": group_email,
+            "email": group_email,
+            "platform": "GCP",
+            "description": f"GCP Group: {group.get('name', group_email)}",
+            "gcpResourceType": "Group",
+            "memberCount": group.get('directMembersCount', 0),
+            "riskLevel": group.get('riskLevel', 'Unknown')
+        }
+        
+        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        
+        group_node = Node(
+            id=group_email,
+            kinds=["GCPGroup", "GCPResource"],
+            properties=Properties(**sanitized_properties)
+        )
+        graph.add_node(group_node)
+        
+        for variation in normalize_variations(group_email, discovered_project_names):
+            node_id_map[variation] = group_email
+
+    # Add secret nodes using ONLY real enumerated data (secrets were
+    # collected but never exported as nodes). Edge builders reference
+    # secrets both as gcp-secret-<project>-<name> and by the raw name, so
+    # the raw name is registered as an alias of the canonical node.
+    for secret in secrets:
+        secret_name = (secret.get('name', '') or '').strip().lower()
+        project_id = (secret.get('project', '') or '').strip().lower()
+        if not secret_name:
+            print(f"[WARNING] Skipping secret with invalid name: {secret}")
+            continue
+        
+        canonical_id = f"gcp-secret-{project_id}-{secret_name}" if project_id else secret_name
+        if canonical_id in graph.nodes:
+            continue
+        
+        clean_properties = {
+            "name": secret_name,
+            "displayname": secret_name,
+            "objectid": canonical_id,
+            "platform": "GCP",
+            "project": project_id or 'Unknown',
+            "description": f"GCP Secret: {secret_name}",
+            
+            # Real GCP-specific metadata from API
+            "gcpResourceType": "Secret",
+            "versionCount": secret.get('versionCount', 'Unknown'),
+            "hasEnabledVersions": secret.get('hasEnabledVersions', 'Unknown'),
+            
+            # Real security analysis
+            "riskLevel": secret.get('riskLevel', 'Unknown'),
+            "remediationPriority": "Unknown"
+        }
+        
+        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        
+        secret_node = Node(
+            id=canonical_id,
+            kinds=["GCPSecret", "GCPResource"],
+            properties=Properties(**sanitized_properties)
+        )
+        graph.add_node(secret_node)
+        
+        for variation in normalize_variations(canonical_id, discovered_project_names):
+            node_id_map[variation] = canonical_id
+        # Alias: edge_builder references secrets by their raw name
+        if secret_name != canonical_id:
+            node_id_map[secret_name] = canonical_id
+
     # Add current user using real data when possible
     if creds:
         try:
@@ -1250,6 +1330,21 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                 ["GCPInstance", "GCPResource"],
                 f"GCP Compute Instance: {node_id}"
             )
+        
+        # Typed resource prefixes (ids match the collectors' edge id formats)
+        typed_resource_prefixes = (
+            ("gcp-pubsub-topic-", ["GCPPubSubTopic", "GCPResource"], "Pub/Sub Topic"),
+            ("gcp-pubsub-subscription-", ["GCPPubSubTopic", "GCPResource"], "Pub/Sub Subscription"),
+            ("gcp-gke-cluster-", ["GCPCluster", "GCPResource"], "GKE Cluster"),
+            ("gcp-gke-nodepool-", ["GCPResource"], "GKE Node Pool"),
+            ("gcp-secret-", ["GCPSecret", "GCPResource"], "Secret Manager Secret"),
+            ("gcp-bq-table-", ["GCPResource"], "BigQuery Table"),
+            ("gcp-cloudsql-", ["GCPSQLInstance", "GCPResource"], "Cloud SQL Instance"),
+            ("gcp-cloudfunction-", ["GCPFunction", "GCPResource"], "Cloud Function"),
+        )
+        for prefix, kinds, label in typed_resource_prefixes:
+            if node_id.startswith(prefix):
+                return (kinds, f"{label}: {node_id}")
         
         # Project node with gcp-project- prefix
         if node_id.startswith("gcp-project-"):

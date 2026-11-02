@@ -848,7 +848,7 @@ class GCPPrivilegeEscalationAnalyzer:
                     else:
                         edges.append({
                             "start": {"value": current_user},
-                            "end": {"value": f"gcp-project-{project_id}"},
+                            "end": {"value": project_id},
                             "kind": f"CanEscalateVia{method_name.replace('_', '').title()}",
                             "properties": {
                                 "source": "privilege_escalation_analysis",

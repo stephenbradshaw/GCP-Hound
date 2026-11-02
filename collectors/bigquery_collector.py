@@ -430,12 +430,14 @@ def build_bigquery_edges(datasets, dataset_access_analysis, current_user):
         norm_dataset_id = dataset['dataset_id']
         project_id = dataset['project']
         full_dataset_id = dataset['full_dataset_id']
-        bq_dataset_id = norm_dataset_id
+        # Use the canonical dataset id so the edge resolves to the dataset
+        # node exported by json_builder (gcp-bq-dataset-<project>-<dataset>)
+        bq_dataset_id = normalize_dataset_id(norm_dataset_id, project_id) or norm_dataset_id
 
-        # Enhanced dataset → project edge
+        # Enhanced dataset → project edge (raw project id)
         edges.append({
             "start": {"value": bq_dataset_id},
-            "end": {"value": f"gcp-project-{project_id}"},
+            "end": {"value": project_id},
             "kind": "BelongsTo",
             "properties": {
                 "source": "bigquery_enumeration",
@@ -481,10 +483,9 @@ def build_bigquery_edges(datasets, dataset_access_analysis, current_user):
         
         for access in analysis['canAccessDataset']:
             sa_email = access['serviceAccount']
-            sa_id = sa_email.replace('@', '_').replace('.', '_')
 
             edges.append({
-                "start": {"value": f"gcp-sa-{sa_id}"},
+                "start": {"value": sa_email},
                 "end": {"value": bq_dataset_id},
                 "kind": "CanAccessBigQueryDataset",
                 "properties": {

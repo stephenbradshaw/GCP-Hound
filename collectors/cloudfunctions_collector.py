@@ -252,10 +252,10 @@ def build_cloudfunctions_edges(functions, current_user):
         region = function.get('region', 'unknown')
         function_id = f"gcp-cloudfunction-{project_id}-{region}-{function_name}"
         
-        # Enhanced edge: Function belongs to project
+        # Enhanced edge: Function belongs to project (raw project id)
         edges.append({
             "start": {"value": function_id},
-            "end": {"value": f"gcp-project-{project_id}"},
+            "end": {"value": project_id},
             "kind": "BelongsTo",
             "properties": {
                 "source": "cloudfunctions_enumeration",
@@ -271,13 +271,12 @@ def build_cloudfunctions_edges(functions, current_user):
             }
         })
         
-        # Enhanced edge: Function uses service account
+        # Enhanced edge: Function uses service account (raw SA email)
         service_account = function.get('serviceAccountEmail')
         if service_account:
-            sa_id = service_account.replace('@', '_').replace('.', '_')
             edges.append({
                 "start": {"value": function_id},
-                "end": {"value": f"gcp-sa-{sa_id}"},
+                "end": {"value": service_account},
                 "kind": "UsesServiceAccount",
                 "properties": {
                     "source": "cloudfunctions_enumeration",
@@ -287,10 +286,10 @@ def build_cloudfunctions_edges(functions, current_user):
                 }
             })
         
-        # Enhanced edge for high-risk functions
+        # Enhanced edge for high-risk functions (signed-in user node is the email)
         if function['riskLevel'] in ['CRITICAL', 'HIGH', 'MEDIUM']:
             edges.append({
-                "start": {"value": f"user-{current_user}"},
+                "start": {"value": current_user},
                 "end": {"value": function_id},
                 "kind": "CanAccessCloudFunction",
                 "properties": {

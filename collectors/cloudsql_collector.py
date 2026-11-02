@@ -162,10 +162,10 @@ def build_cloudsql_edges(instances, current_user):
         project_id = instance['project']
         instance_id = f"gcp-cloudsql-{project_id}-{instance_name}"
         
-        # Edge: Instance belongs to project
+        # Edge: Instance belongs to project (raw project id)
         edges.append({
             "start": {"value": instance_id},
-            "end": {"value": f"gcp-project-{project_id}"},
+            "end": {"value": project_id},
             "kind": "BelongsTo",
             "properties": {
                 "source": "cloudsql_enumeration",
@@ -176,10 +176,10 @@ def build_cloudsql_edges(instances, current_user):
             }
         })
         
-        # Edge for high-risk instances
+        # Edge for high-risk instances (signed-in user node is the email)
         if instance['riskLevel'] in ['HIGH', 'MEDIUM']:
             edges.append({
-                "start": {"value": f"user-{current_user}"},
+                "start": {"value": current_user},
                 "end": {"value": instance_id},
                 "kind": "CanAccessCloudSQL",
                 "properties": {

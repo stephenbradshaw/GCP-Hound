@@ -543,10 +543,10 @@ def build_secret_access_edges(secrets, secret_access_analysis, current_user):
         project_id = secret['project']
         secret_id = f"gcp-secret-{project_id}-{secret_name}"
         
-        # Enhanced edge: Secret belongs to project
+        # Enhanced edge: Secret belongs to project (raw project id)
         edges.append({
             "start": {"value": secret_id},
-            "end": {"value": f"gcp-project-{project_id}"},
+            "end": {"value": project_id},
             "kind": "BelongsTo",
             "properties": {
                 "source": "secret_enumeration",
@@ -567,10 +567,9 @@ def build_secret_access_edges(secrets, secret_access_analysis, current_user):
         
         for access in analysis['canAccessSecret']:
             sa_email = access['serviceAccount']
-            sa_id = sa_email.replace('@', '_').replace('.', '_')
-            
+
             edges.append({
-                "start": {"value": f"gcp-sa-{sa_id}"},
+                "start": {"value": sa_email},
                 "end": {"value": secret_id},
                 "kind": "CanReadSecrets",  # Updated to match hybrid approach
                 "properties": {

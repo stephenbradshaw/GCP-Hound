@@ -413,18 +413,15 @@ def build_users_groups_edges(users, groups, group_memberships, escalation_analys
     """
     edges = []
     
-    # Edges: Users belong to groups
+    # Edges: Users belong to groups (nodes use the raw user/group emails)
     for membership in group_memberships:
         user_email = membership['memberEmail']
         group_email = membership['groupEmail']
         role = membership['role']
         
-        user_id = user_email.replace('@', '_').replace('.', '_')
-        group_id = group_email.replace('@', '_').replace('.', '_')
-        
         edges.append({
-            "start": {"value": f"gcp-user-{user_id}"},
-            "end": {"value": f"gcp-group-{group_id}"},
+            "start": {"value": user_email.lower()},
+            "end": {"value": group_email.lower()},
             "kind": "MemberOf",
             "properties": {
                 "source": "users_groups_enumeration",
@@ -435,14 +432,14 @@ def build_users_groups_edges(users, groups, group_memberships, escalation_analys
             }
         })
     
-    # Edges: Administrative privilege escalation
+    # Edges: Administrative privilege escalation (nodes use raw emails;
+    # session edges start at the signed-in user's email)
     for admin_user in escalation_analysis['adminUsers']:
         user_email = admin_user['email']
-        user_id = user_email.replace('@', '_').replace('.', '_')
         
         edges.append({
-            "start": {"value": f"user-{current_user}"},
-            "end": {"value": f"gcp-user-{user_id}"},
+            "start": {"value": current_user},
+            "end": {"value": user_email.lower()},
             "kind": "CanEscalateToAdmin",
             "properties": {
                 "source": "users_groups_privilege_analysis",
@@ -453,14 +450,13 @@ def build_users_groups_edges(users, groups, group_memberships, escalation_analys
             }
         })
     
-    # Edges: Group-based privilege inheritance
+    # Edges: Group-based privilege inheritance (nodes use raw emails)
     for priv_group in escalation_analysis['privilegedGroups']:
         group_email = priv_group['email']
-        group_id = group_email.replace('@', '_').replace('.', '_')
         
         edges.append({
-            "start": {"value": f"user-{current_user}"},
-            "end": {"value": f"gcp-group-{group_id}"},
+            "start": {"value": current_user},
+            "end": {"value": group_email.lower()},
             "kind": "CanEscalateViaGroup",
             "properties": {
                 "source": "users_groups_privilege_analysis",

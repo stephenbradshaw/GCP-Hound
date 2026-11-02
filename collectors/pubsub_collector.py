@@ -164,10 +164,10 @@ def build_pubsub_edges(topics, subscriptions, current_user):
         project_id = topic['project']
         topic_id = f"gcp-pubsub-topic-{project_id}-{topic_name}"
         
-        # Edge: Topic belongs to project
+        # Edge: Topic belongs to project (raw project id)
         edges.append({
             "start": {"value": topic_id},
-            "end": {"value": f"gcp-project-{project_id}"},
+            "end": {"value": project_id},
             "kind": "BelongsTo",
             "properties": {
                 "source": "pubsub_enumeration",
@@ -182,10 +182,10 @@ def build_pubsub_edges(topics, subscriptions, current_user):
         project_id = subscription['project']
         sub_id = f"gcp-pubsub-subscription-{project_id}-{sub_name}"
         
-        # Edge: Subscription belongs to project
+        # Edge: Subscription belongs to project (raw project id)
         edges.append({
             "start": {"value": sub_id},
-            "end": {"value": f"gcp-project-{project_id}"},
+            "end": {"value": project_id},
             "kind": "BelongsTo",
             "properties": {
                 "source": "pubsub_enumeration",
@@ -209,10 +209,10 @@ def build_pubsub_edges(topics, subscriptions, current_user):
                 }
             })
         
-        # Edge for high-risk subscriptions
+        # Edge for high-risk subscriptions (signed-in user node is the email)
         if subscription['riskLevel'] in ['HIGH', 'MEDIUM']:
             edges.append({
-                "start": {"value": f"user-{current_user}"},
+                "start": {"value": current_user},
                 "end": {"value": sub_id},
                 "kind": "CanAccessPubSub",
                 "properties": {
