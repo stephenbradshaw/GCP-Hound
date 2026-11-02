@@ -316,7 +316,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
     
     return edges
 
-def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None):
+def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None):
     """Export comprehensive GCP data to BloodHound JSON format using ONLY real enumerated data"""
     graph = OpenGraph()  # NO source_kind parameter
     
@@ -328,6 +328,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     log_buckets = log_buckets or []
     log_metrics = log_metrics or []
     bigquery_datasets = bigquery_datasets or []
+    folders = folders or []
+
+    if folders:
+        print(f"[DEBUG] Including {len(folders)} folders")
     
     if log_sinks or log_buckets or log_metrics:
         total_logging = len(log_sinks) + len(log_buckets) + len(log_metrics)
@@ -782,6 +786,84 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         for variation in normalize_variations(metric_id, discovered_project_names):
             node_id_map[variation] = metric_id
+
+    # Add folder nodes using ONLY real enumerated data, BEFORE any folder edge
+    # is exported: an edge whose folder id is missing is a bug, not a skip.
+    for folder in folders:
+        folder_name = folder.get('name') or f"folders/{folder.get('id', '')}"
+        
+        # VALIDATION: Skip if no valid folder id
+        if not folder_name or not folder_name.strip() or not folder_name.startswith('folders/'):
+            print(f"[WARNING] Skipping folder with invalid id: {folder}")
+            continue
+        
+        clean_properties = {
+            "name": folder_name,
+            "displayname": folder.get('displayName', folder_name),
+            "objectid": folder_name,
+            "platform": "GCP",
+            "description": f"GCP Folder: {folder.get('displayName', folder_name)}",
+            
+            # Real GCP-specific metadata from API
+            "gcpResourceType": "Folder",
+            "parent": folder.get('parent', 'Unknown'),
+            "lifecycleState": folder.get('lifecycleState', 'Unknown'),
+            "parentType": folder.get('parentType', 'unknown'),
+            
+            # Real security analysis
+            "riskLevel": folder.get('riskLevel', 'Unknown'),
+            "remediationPriority": "Unknown"
+        }
+        
+        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        
+        folder_node = Node(
+            id=folder_name,
+            kinds=["GCPFolder", "GCPResource"],
+            properties=Properties(**sanitized_properties)
+        )
+        graph.add_node(folder_node)
+        
+        for variation in normalize_variations(folder_name, discovered_project_names):
+            node_id_map[variation] = folder_name
+
+        # Ensure the folder's parent has a node so containment edges resolve
+        parent = folder.get('parent', '')
+        if parent and parent not in graph.nodes:
+            if parent.startswith('folders/'):
+                parent_properties = {
+                    "name": parent,
+                    "displayname": parent,
+                    "objectid": parent,
+                    "platform": "GCP",
+                    "description": f"GCP Folder: {parent}",
+                    "gcpResourceType": "Folder",
+                    "riskLevel": "Unknown"
+                }
+                parent_kinds = ["GCPFolder", "GCPResource"]
+            elif parent.startswith('organizations/'):
+                parent_properties = {
+                    "name": parent,
+                    "displayname": parent,
+                    "objectid": parent,
+                    "platform": "GCP",
+                    "description": f"GCP Organization: {parent}",
+                    "gcpResourceType": "Organization",
+                    "riskLevel": "Unknown"
+                }
+                parent_kinds = ["GCPOrganization", "GCPResource"]
+            else:
+                continue
+            
+            parent_node = Node(
+                id=parent,
+                kinds=parent_kinds,
+                properties=Properties(**{k: sanitize_property_value(v) for k, v in parent_properties.items()})
+            )
+            graph.add_node(parent_node)
+            
+            for variation in normalize_variations(parent, discovered_project_names):
+                node_id_map[variation] = parent
 
     # Add current user using real data when possible
     if creds:

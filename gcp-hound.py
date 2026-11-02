@@ -369,7 +369,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
         if args.verbose:
             print(f"\n[*] Phase 3B: Organizational Structure Enumeration")
         try:
-            folders, folder_hierarchy = collect_folders(creds, [], args)
+            folders, folder_hierarchy = collect_folders(creds, [])
         except Exception as e:
             handle_api_error(e, "Folder enumeration", args)
             folders, folder_hierarchy = [], {}
@@ -571,7 +571,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
             os.makedirs(args.output)
         
         try:
-            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets)
+            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets, folders=folders)
         except Exception as e:
             handle_api_error(e, "BloodHound export", args)
             output_file = None
