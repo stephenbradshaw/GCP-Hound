@@ -26,6 +26,8 @@ wheels/
 output/
 *.json
 !gcp_icons.json
+!gcp-model.json
+!gcp-extension-schema.json
 
 # Virtual environment
 .venv/
@@ -45,6 +47,8 @@ Thumbs.db
 # Credentials (IMPORTANT!)
 *.json
 !gcp_icons.json
+!gcp-model.json
+!gcp-extension-schema.json
 credentials.json
 service-account.json
 cred.json
