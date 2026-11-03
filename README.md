@@ -35,7 +35,7 @@ The tool may currently lack many advanced features, but I'm committed to gradual
 
 ## Limitations
 
-**Search Functionality**: The BloodHound Community Edition UI currently does not support search for custom start/end nodes with GCP data. Analysis must be performed via direct Cypher queries. This is a limitation of the BloodHound platform, not GCP-Hound, and will be addressed if native support becomes available.
+**Pathfinding**: Install the OpenGraph extension schema (`register_gcp_nodes.py`) before uploading exports. Without it, BloodHound treats the file as a generic graph (Cypher/search only). With the schema installed, traversable GCP abuse edges participate in CE pathfinding.
 - **API Coverage**: GCP-Hound relies on Google Cloud APIs for enumeration. Some APIs or services may be disabled in target projects by default, resulting in partial data collection. Enabling additional APIs (e.g., via the gcloud CLI) may improve coverage, but this tool is strictly read-only and does not modify cloud configurations.
 - - **User and Group Enumeration**: Unlike Azure Entra ID (AAD) or on-premises Active Directory, GCP does not reliably expose APIs to enumerate all users or groups within an organization or project by default. Enumeration of users and groups is only possible if the executing account has sufficient permissions (such as admin privileges or delegated directory roles). Otherwise, group/user visibility is limited or unavailable.
 - **Environment Scope**: The tool has primarily been tested in lab and CTF settings. Results in large-scale or production GCP organizations may be incomplete or contain gaps.
@@ -128,17 +128,23 @@ gcloud auth application-default login
 gcloud auth login
 ```
 
-### **3. BloodHound Integration Setup to make the icons enable (Optional but Recommended)**
+### **3. BloodHound OpenGraph setup (required for pathfinding)**
 
-To enable custom GCP icons and node types in BloodHound:
+Install the GCP-Hound **extension definition schema** (enables CE pathfinding on traversable abuse edges) and optional custom-node icons:
 
 ```
 python3 register_gcp_nodes.py -s http://localhost:8080 -u admin -p password
 ```
 
-This step is required only once per BloodHound instance and enables:
-- ✅ Custom GCP icons in the BloodHound UI  
-- ✅ Enhanced visualization experience
+This uploads `gcp-extension-schema.json` via `PUT /api/v2/extensions` and registers icons from `gcp-model.json`.
+
+- ✅ Structured graph kinds (`GCP_ServiceAccount`, `GCP_CanCreateKeys`, …)
+- ✅ Pathfinding on traversable abuse edges (`is_traversable: true`)
+- ✅ Custom GCP icons in the BloodHound UI
+
+Flags: `--extension-only`, `--icons-only`, `--extension-schema PATH`.
+
+Re-collect after upgrading: exports now emit namespaced kinds that must match the installed schema.
 
 ---
 
@@ -226,8 +232,8 @@ GCP-Hound currently enumerates **23 distinct GCP node types** across the Google 
 
 | Category                  | Node Types                                               | Description                                            |
 |---------------------------|---------------------------------------------------------|--------------------------------------------------------|
-| **Identity & Access**     | `GCPUser`, `GCPGroup`, `GCPServiceAccount`, `GCPServiceAccountKey`, `GCPGoogleManagedSA`,`CanSignBlob`, `CanSignJWT`  | User identities, groups, and service accounts          |
-| **Organization**          | `GCPProject`, `GCPFolder`, `GCPOrganization`                           | Organizational structure and hierarchy                 |
+| **Identity & Access**     | `GCP_User`, `GCP_Group`, `GCP_ServiceAccount`, `GCP_ServiceAccountKey`, `GCP_GoogleManagedSA`,`GCP_CanSignBlob`, `GCP_CanSignJWT`  | User identities, groups, and service accounts          |
+| **Organization**          | `GCP_Project`, `GCPFolder`, `GCPOrganization`                           | Organizational structure and hierarchy                 |
 | **Compute & Containers**  | `GCPInstance`, `GCPCluster`, `GCPNode`                                 | Compute Engine VMs and GKE clusters                    |
 | **Storage & Data**        | `GCPBucket`, `GCPDataset`, `GCPSecret`, `GCPFunction`                 | Storage, BigQuery, Secret Manager, Cloud Functions     |
 | **Networking**            | `GCPNetwork`, `GCPVPC`, `GCPSubnet`, `GCPFirewall`, `GCPRole`         | Network infrastructure and roles                       |
@@ -312,10 +318,10 @@ RETURN n, r, m LIMIT 100
 
 ```
 // List all service accounts
-MATCH (sa:GCPServiceAccount) RETURN sa LIMIT 25
+MATCH (sa:GCP_ServiceAccount) RETURN sa LIMIT 25
 
 // List all GCP projects  
-MATCH (p:GCPProject) RETURN p LIMIT 25
+MATCH (p:GCP_Project) RETURN p LIMIT 25
 
 // List all GCP resources
 MATCH (res:GCPResource) RETURN res LIMIT 25
@@ -332,12 +338,12 @@ WHERE r.role IN ["roles/owner", "roles/editor"]
 RETURN p
 
 // Show service account with secret access
-MATCH p = (sa:GCPServiceAccount)-[r]->(target)
+MATCH p = (sa:GCP_ServiceAccount)-[r]->(target)
 WHERE type(r) IN ["CanReadSecrets", "CanReadSecretsInProject"]
 RETURN p
 
 // Show users with secret access
-MATCH p = (user:GCPUser)-[r]->(target)
+MATCH p = (user:GCP_User)-[r]->(target)
 WHERE type(r) IN ["CanReadSecrets", "CanReadSecretsInProject"]
 RETURN p
 
@@ -361,26 +367,26 @@ MATCH (a)-[r:CanAccessLogStream|CanViewSensitiveLogs]->(ls:GCPLogSink) RETURN a,
 
 ```
 // Show project-to-service-account relationships
-MATCH p=(project:GCPProject)-[r:ContainsServiceAccount]->(sa:GCPServiceAccount) RETURN p LIMIT 25
+MATCH p=(project:GCP_Project)-[r:GCP_ContainsServiceAccount]->(sa:GCP_ServiceAccount) RETURN p LIMIT 25
 
 // Explore all service account relationships
-MATCH (sa:GCPServiceAccount)-[r]->(target) RETURN sa, r, target LIMIT 25
+MATCH (sa:GCP_ServiceAccount)-[r]->(target) RETURN sa, r, target LIMIT 25
 
 // Show all GCP resource relationships
 MATCH (res:GCPResource)-[r]->(target) RETURN res, r, target LIMIT 50
 
 // Find bucket ownership relationships
-MATCH p=(project:GCPProject)-[r:OwnsStorageBucket]->(bucket:GCPBucket) RETURN p LIMIT 25
+MATCH p=(project:GCP_Project)-[r:OwnsStorageBucket]->(bucket:GCPBucket) RETURN p LIMIT 25
 ```
 
 - Critical Security Analysis
 
 ```
 // CRITICAL: Find service account key creation privileges
-MATCH (source)-[r:CanCreateKeys]->(target) RETURN source, r, target
+MATCH (source)-[r:GCP_CanCreateKeys]->(target) RETURN source, r, target
 
 // HIGH RISK: Service account impersonation paths
-MATCH (sa:GCPServiceAccount)-[r:CanImpersonate]->(target) RETURN sa, r, target LIMIT 25
+MATCH (sa:GCP_ServiceAccount)-[r:GCP_CanImpersonate]->(target) RETURN sa, r, target LIMIT 25
 
 // List key enumeration capabilities
 MATCH (source)-[r:CanListKeys]->(target) RETURN source, r, target LIMIT 25

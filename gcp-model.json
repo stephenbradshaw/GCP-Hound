@@ -1,10 +1,10 @@
 {
   "meta": {
-    "version": "1.0",
-    "description": "GCP-Hound Complete Custom Node Types - All nodes including logging resources"
+    "version": "1.1",
+    "description": "GCP-Hound custom node icons for structured OpenGraph kinds (GCP_*)"
   },
   "custom_kinds": {
-    "ServiceAccount": {
+    "GCP_ServiceAccount": {
       "icon": {
         "type": "font-awesome",
         "name": "user-secret",
@@ -15,11 +15,10 @@
         "name",
         "displayname",
         "email",
-        "objectid",
         "platform"
       ]
     },
-    "Project": {
+    "GCP_Project": {
       "icon": {
         "type": "font-awesome",
         "name": "folder-open",
@@ -30,11 +29,10 @@
         "name",
         "displayname",
         "projectId",
-        "objectid",
         "platform"
       ]
     },
-    "Bucket": {
+    "GCP_Bucket": {
       "icon": {
         "type": "font-awesome",
         "name": "database",
@@ -44,11 +42,10 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "platform"
       ]
     },
-    "Dataset": {
+    "GCP_Dataset": {
       "icon": {
         "type": "font-awesome",
         "name": "chart-bar",
@@ -59,11 +56,10 @@
         "name",
         "displayname",
         "datasetId",
-        "objectid",
         "platform"
       ]
     },
-    "GCPFunction": {
+    "GCP_Function": {
       "icon": {
         "type": "font-awesome",
         "name": "code",
@@ -73,11 +69,10 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "platform"
       ]
     },
-    "GCPPubSubTopic": {
+    "GCP_PubSubTopic": {
       "icon": {
         "type": "font-awesome",
         "name": "broadcast-tower",
@@ -87,11 +82,10 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "platform"
       ]
     },
-    "GCPOrganization": {
+    "GCP_Organization": {
       "icon": {
         "type": "font-awesome",
         "name": "building",
@@ -101,11 +95,10 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "platform"
       ]
     },
-    "GCPFolder": {
+    "GCP_Folder": {
       "icon": {
         "type": "font-awesome",
         "name": "folder",
@@ -115,40 +108,10 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "platform"
       ]
     },
-    "GCPProject": {
-      "icon": {
-        "type": "font-awesome",
-        "name": "folder-open",
-        "color": "#34A853"
-      },
-      "display_property": "displayname",
-      "searchable_properties": [
-        "name",
-        "displayname",
-        "projectId",
-        "objectid",
-        "platform"
-      ]
-    },
-    "GCPBucket": {
-      "icon": {
-        "type": "font-awesome",
-        "name": "database",
-        "color": "#FBBC04"
-      },
-      "display_property": "displayname",
-      "searchable_properties": [
-        "name",
-        "displayname",
-        "objectid",
-        "platform"
-      ]
-    },
-    "GCPInstance": {
+    "GCP_Instance": {
       "icon": {
         "type": "font-awesome",
         "name": "server",
@@ -158,12 +121,11 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "zone",
         "platform"
       ]
     },
-    "GCPCluster": {
+    "GCP_Cluster": {
       "icon": {
         "type": "font-awesome",
         "name": "cubes",
@@ -173,12 +135,11 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "location",
         "platform"
       ]
     },
-    "GCPSQLInstance": {
+    "GCP_SQLInstance": {
       "icon": {
         "type": "font-awesome",
         "name": "database",
@@ -188,42 +149,10 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "platform"
       ]
     },
-    "GCPServiceAccount": {
-      "icon": {
-        "type": "font-awesome",
-        "name": "user-tie",
-        "color": "#4285F4"
-      },
-      "display_property": "displayname",
-      "searchable_properties": [
-        "name",
-        "displayname",
-        "email",
-        "objectid",
-        "short_name",
-        "platform"
-      ]
-    },
-    "GCPDataset": {
-      "icon": {
-        "type": "font-awesome",
-        "name": "chart-bar",
-        "color": "#EA4335"
-      },
-      "display_property": "displayname",
-      "searchable_properties": [
-        "name",
-        "displayname",
-        "datasetId",
-        "objectid",
-        "platform"
-      ]
-    },
-    "GCPSecret": {
+    "GCP_Secret": {
       "icon": {
         "type": "font-awesome",
         "name": "key",
@@ -233,11 +162,10 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "platform"
       ]
     },
-    "GCPUser": {
+    "GCP_User": {
       "icon": {
         "type": "font-awesome",
         "name": "user",
@@ -248,11 +176,10 @@
         "name",
         "email",
         "displayname",
-        "objectid",
         "platform"
       ]
     },
-    "GCPGroup": {
+    "GCP_Group": {
       "icon": {
         "type": "font-awesome",
         "name": "users",
@@ -263,11 +190,10 @@
         "name",
         "email",
         "displayname",
-        "objectid",
         "platform"
       ]
     },
-    "GCPRole": {
+    "GCP_Role": {
       "icon": {
         "type": "font-awesome",
         "name": "shield-alt",
@@ -277,12 +203,11 @@
       "searchable_properties": [
         "name",
         "title",
-        "objectid",
         "stage",
         "platform"
       ]
     },
-    "GCPServiceAccountKey": {
+    "GCP_ServiceAccountKey": {
       "icon": {
         "type": "font-awesome",
         "name": "key",
@@ -293,11 +218,10 @@
         "keyId",
         "keyType",
         "keyAlgorithm",
-        "objectid",
         "platform"
       ]
     },
-    "GCPNetwork": {
+    "GCP_Network": {
       "icon": {
         "type": "font-awesome",
         "name": "network-wired",
@@ -307,11 +231,10 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "platform"
       ]
     },
-    "GCPFirewall": {
+    "GCP_Firewall": {
       "icon": {
         "type": "font-awesome",
         "name": "fire",
@@ -321,11 +244,10 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "platform"
       ]
     },
-    "GCPKMSKey": {
+    "GCP_KMSKey": {
       "icon": {
         "type": "font-awesome",
         "name": "lock",
@@ -335,11 +257,10 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "platform"
       ]
     },
-    "GCPLogSink": {
+    "GCP_LogSink": {
       "icon": {
         "type": "font-awesome",
         "name": "stream",
@@ -349,12 +270,11 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "destination",
         "platform"
       ]
     },
-    "GCPLogBucket": {
+    "GCP_LogBucket": {
       "icon": {
         "type": "font-awesome",
         "name": "inbox",
@@ -364,12 +284,11 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "location",
         "platform"
       ]
     },
-    "GCPLogMetric": {
+    "GCP_LogMetric": {
       "icon": {
         "type": "font-awesome",
         "name": "chart-line",
@@ -379,12 +298,11 @@
       "searchable_properties": [
         "name",
         "displayname",
-        "objectid",
         "filter",
         "platform"
       ]
     },
-    "GCPGoogleManagedSA": {
+    "GCP_GoogleManagedSA": {
       "icon": {
         "type": "font-awesome",
         "name": "robot",
@@ -395,9 +313,34 @@
         "name",
         "displayname",
         "email",
-        "objectid",
         "serviceType",
         "managedBy",
+        "platform"
+      ]
+    },
+    "GCP_Resource": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "cube",
+        "color": "#607D8B"
+      },
+      "display_property": "name",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "platform"
+      ]
+    },
+    "GCP_Principal": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "user-tag",
+        "color": "#FF9800"
+      },
+      "display_property": "name",
+      "searchable_properties": [
+        "name",
+        "displayname",
         "platform"
       ]
     }

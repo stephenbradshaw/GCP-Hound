@@ -1,0 +1,637 @@
+{
+  "schema": {
+    "name": "GCPHound",
+    "display_name": "GCP-Hound (OpenGraph)",
+    "version": "v1.0.0",
+    "namespace": "GCP"
+  },
+  "node_kinds": [
+    {
+      "name": "GCP_Bucket",
+      "display_name": "GCP Bucket",
+      "description": "GCP-Hound node kind GCP_Bucket",
+      "is_display_kind": true,
+      "icon": "database",
+      "color": "#FBBC04"
+    },
+    {
+      "name": "GCP_Cluster",
+      "display_name": "GCP Cluster",
+      "description": "GCP-Hound node kind GCP_Cluster",
+      "is_display_kind": true,
+      "icon": "cubes",
+      "color": "#00BCD4"
+    },
+    {
+      "name": "GCP_Dataset",
+      "display_name": "GCP Dataset",
+      "description": "GCP-Hound node kind GCP_Dataset",
+      "is_display_kind": true,
+      "icon": "chart-bar",
+      "color": "#EA4335"
+    },
+    {
+      "name": "GCP_Firewall",
+      "display_name": "GCP Firewall",
+      "description": "GCP-Hound node kind GCP_Firewall",
+      "is_display_kind": true,
+      "icon": "fire",
+      "color": "#FF5722"
+    },
+    {
+      "name": "GCP_Folder",
+      "display_name": "GCP Folder",
+      "description": "GCP-Hound node kind GCP_Folder",
+      "is_display_kind": true,
+      "icon": "folder",
+      "color": "#8BC34A"
+    },
+    {
+      "name": "GCP_Function",
+      "display_name": "GCP Function",
+      "description": "GCP-Hound node kind GCP_Function",
+      "is_display_kind": true,
+      "icon": "code",
+      "color": "#673AB7"
+    },
+    {
+      "name": "GCP_GoogleManagedSA",
+      "display_name": "GCP GoogleManagedSA",
+      "description": "GCP-Hound node kind GCP_GoogleManagedSA",
+      "is_display_kind": true,
+      "icon": "robot",
+      "color": "#9E9E9E"
+    },
+    {
+      "name": "GCP_Group",
+      "display_name": "GCP Group",
+      "description": "GCP-Hound node kind GCP_Group",
+      "is_display_kind": true,
+      "icon": "users",
+      "color": "#FF5722"
+    },
+    {
+      "name": "GCP_Instance",
+      "display_name": "GCP Instance",
+      "description": "GCP-Hound node kind GCP_Instance",
+      "is_display_kind": true,
+      "icon": "server",
+      "color": "#9C27B0"
+    },
+    {
+      "name": "GCP_KMSKey",
+      "display_name": "GCP KMSKey",
+      "description": "GCP-Hound node kind GCP_KMSKey",
+      "is_display_kind": true,
+      "icon": "lock",
+      "color": "#795548"
+    },
+    {
+      "name": "GCP_LogBucket",
+      "display_name": "GCP LogBucket",
+      "description": "GCP-Hound node kind GCP_LogBucket",
+      "is_display_kind": true,
+      "icon": "inbox",
+      "color": "#06B6D4"
+    },
+    {
+      "name": "GCP_LogMetric",
+      "display_name": "GCP LogMetric",
+      "description": "GCP-Hound node kind GCP_LogMetric",
+      "is_display_kind": true,
+      "icon": "chart-line",
+      "color": "#F59E0B"
+    },
+    {
+      "name": "GCP_LogSink",
+      "display_name": "GCP LogSink",
+      "description": "GCP-Hound node kind GCP_LogSink",
+      "is_display_kind": true,
+      "icon": "stream",
+      "color": "#8B5CF6"
+    },
+    {
+      "name": "GCP_Network",
+      "display_name": "GCP Network",
+      "description": "GCP-Hound node kind GCP_Network",
+      "is_display_kind": true,
+      "icon": "network-wired",
+      "color": "#00BCD4"
+    },
+    {
+      "name": "GCP_Organization",
+      "display_name": "GCP Organization",
+      "description": "GCP-Hound node kind GCP_Organization",
+      "is_display_kind": true,
+      "icon": "building",
+      "color": "#424242"
+    },
+    {
+      "name": "GCP_Principal",
+      "display_name": "GCP Principal",
+      "description": "GCP-Hound node kind GCP_Principal",
+      "is_display_kind": true,
+      "icon": "circle",
+      "color": "#9E9E9E"
+    },
+    {
+      "name": "GCP_Project",
+      "display_name": "GCP Project",
+      "description": "GCP-Hound node kind GCP_Project",
+      "is_display_kind": true,
+      "icon": "folder-open",
+      "color": "#34A853"
+    },
+    {
+      "name": "GCP_PubSubTopic",
+      "display_name": "GCP PubSubTopic",
+      "description": "GCP-Hound node kind GCP_PubSubTopic",
+      "is_display_kind": true,
+      "icon": "broadcast-tower",
+      "color": "#607D8B"
+    },
+    {
+      "name": "GCP_Resource",
+      "display_name": "GCP Resource",
+      "description": "GCP-Hound node kind GCP_Resource",
+      "is_display_kind": true,
+      "icon": "circle",
+      "color": "#9E9E9E"
+    },
+    {
+      "name": "GCP_Role",
+      "display_name": "GCP Role",
+      "description": "GCP-Hound node kind GCP_Role",
+      "is_display_kind": true,
+      "icon": "shield-alt",
+      "color": "#E91E63"
+    },
+    {
+      "name": "GCP_SQLInstance",
+      "display_name": "GCP SQLInstance",
+      "description": "GCP-Hound node kind GCP_SQLInstance",
+      "is_display_kind": true,
+      "icon": "database",
+      "color": "#795548"
+    },
+    {
+      "name": "GCP_Secret",
+      "display_name": "GCP Secret",
+      "description": "GCP-Hound node kind GCP_Secret",
+      "is_display_kind": true,
+      "icon": "key",
+      "color": "#FF6D00"
+    },
+    {
+      "name": "GCP_ServiceAccount",
+      "display_name": "GCP ServiceAccount",
+      "description": "GCP-Hound node kind GCP_ServiceAccount",
+      "is_display_kind": true,
+      "icon": "user-tie",
+      "color": "#4285F4"
+    },
+    {
+      "name": "GCP_ServiceAccountKey",
+      "display_name": "GCP ServiceAccountKey",
+      "description": "GCP-Hound node kind GCP_ServiceAccountKey",
+      "is_display_kind": true,
+      "icon": "key",
+      "color": "#3F51B5"
+    },
+    {
+      "name": "GCP_User",
+      "display_name": "GCP User",
+      "description": "GCP-Hound node kind GCP_User",
+      "is_display_kind": true,
+      "icon": "user",
+      "color": "#FF9800"
+    }
+  ],
+  "relationship_kinds": [
+    {
+      "name": "GCP_AdminTo",
+      "description": "GCP-Hound relationship AdminTo",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `AdminTo` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_BelongsTo",
+      "description": "GCP-Hound relationship BelongsTo",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanAccessBigQueryDataset",
+      "description": "GCP-Hound relationship CanAccessBigQueryDataset",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanAccessBigQueryDataset` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanAccessCloudFunction",
+      "description": "GCP-Hound relationship CanAccessCloudFunction",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanAccessCloudFunction` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanAccessCloudSQL",
+      "description": "GCP-Hound relationship CanAccessCloudSQL",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanAccessCloudSQL` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanAccessLogStream",
+      "description": "GCP-Hound relationship CanAccessLogStream",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanAccessPubSub",
+      "description": "GCP-Hound relationship CanAccessPubSub",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanAccessPubSub` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanCreateCloudFunction",
+      "description": "GCP-Hound relationship CanCreateCloudFunction",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanCreateCloudFunction` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanCreateComputeInstance",
+      "description": "GCP-Hound relationship CanCreateComputeInstance",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanCreateComputeInstance` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanCreateKeys",
+      "description": "GCP-Hound relationship CanCreateKeys",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanCreateKeys` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanEscalateToAdmin",
+      "description": "GCP-Hound relationship CanEscalateToAdmin",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanEscalateToAdmin` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanEscalateViaComputeInstance",
+      "description": "GCP-Hound relationship CanEscalateViaComputeInstance",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanEscalateViaComputeInstance` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanEscalateViaGKECluster",
+      "description": "GCP-Hound relationship CanEscalateViaGKECluster",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanEscalateViaGKECluster` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanEscalateViaGroup",
+      "description": "GCP-Hound relationship CanEscalateViaGroup",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanEscalateViaGroup` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanGetAccessToken",
+      "description": "GCP-Hound relationship CanGetAccessToken",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanGetAccessToken` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanImpersonate",
+      "description": "GCP-Hound relationship CanImpersonate",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanImpersonate` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanListKeys",
+      "description": "GCP-Hound relationship CanListKeys",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanModifyBucketPoliciesInProject",
+      "description": "GCP-Hound relationship CanModifyBucketPoliciesInProject",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanModifyBucketPoliciesInProject` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanModifyBucketPolicy",
+      "description": "GCP-Hound relationship CanModifyBucketPolicy",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanModifyBucketPolicy` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanModifyIamPolicy",
+      "description": "GCP-Hound relationship CanModifyIamPolicy",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanModifyIamPolicy` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanModifyProjectPolicy",
+      "description": "GCP-Hound relationship CanModifyProjectPolicy",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanModifyProjectPolicy` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanReadSecrets",
+      "description": "GCP-Hound relationship CanReadSecrets",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanReadSecrets` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanReadSecretsInProject",
+      "description": "GCP-Hound relationship CanReadSecretsInProject",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanReadSecretsInProject` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanSignBlob",
+      "description": "GCP-Hound relationship CanSignBlob",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanSignBlob` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanSignJWT",
+      "description": "GCP-Hound relationship CanSignJWT",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanSignJWT` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanViewSensitiveLogs",
+      "description": "GCP-Hound relationship CanViewSensitiveLogs",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanWriteToLogSink",
+      "description": "GCP-Hound relationship CanWriteToLogSink",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_Contains",
+      "description": "GCP-Hound relationship Contains",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_ContainsServiceAccount",
+      "description": "GCP-Hound relationship ContainsServiceAccount",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_HasGoogleOwnedSA",
+      "description": "GCP-Hound relationship HasGoogleOwnedSA",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_HasRoleOnProject",
+      "description": "GCP-Hound relationship HasRoleOnProject",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_HighPrivilegeServiceAccount",
+      "description": "GCP-Hound relationship HighPrivilegeServiceAccount",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `HighPrivilegeServiceAccount` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_MemberOf",
+      "description": "GCP-Hound relationship MemberOf",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_MemberOfProject",
+      "description": "GCP-Hound relationship MemberOfProject",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_OwnsDataset",
+      "description": "GCP-Hound relationship OwnsDataset",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_OwnsProject",
+      "description": "GCP-Hound relationship OwnsProject",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_OwnsSecret",
+      "description": "GCP-Hound relationship OwnsSecret",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_OwnsStorageBucket",
+      "description": "GCP-Hound relationship OwnsStorageBucket",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_RelatedTo",
+      "description": "GCP-Hound relationship RelatedTo",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_SubscribesTo",
+      "description": "GCP-Hound relationship SubscribesTo",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_UsesServiceAccount",
+      "description": "GCP-Hound relationship UsesServiceAccount",
+      "is_traversable": false
+    }
+  ],
+  "environments": [
+    {
+      "environment_kind": "GCP_Organization",
+      "source_kind": "GCP",
+      "principal_kinds": [
+        "GCP_User",
+        "GCP_ServiceAccount",
+        "GCP_GoogleManagedSA",
+        "GCP_Group",
+        "GCP_Principal"
+      ]
+    }
+  ]
+}
