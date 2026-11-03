@@ -20,6 +20,7 @@ from collectors.privesc_analyzer import GCPPrivilegeEscalationAnalyzer, check_wo
 from collectors.edge_builder import build_edges, build_service_account_permission_edges #added new functions from edge builder
 from collectors.iam_collector import collect_iam, analyze_cross_project_permissions, collect_service_account_permissions #added new functions from iam collector
 from collectors.user_collector import collect_users
+from collectors.org_collector import collect_orgs
 from collectors.folder_collector import collect_folders, build_folder_edges
 from collectors.logging_collector import collect_logging_resources, analyze_logging_access_privileges, build_logging_edges
 from bloodhound.json_builder import export_bloodhound_json
@@ -261,21 +262,22 @@ For more authentication details: https://cloud.google.com/docs/authentication
             handle_api_error(e, "API capability assessment", args)
             capabilities = {}
 
-        # Early Admin Status Check with conditional logic
+        # Directory / Cloud Identity probe (informational — collection always attempted)
         try:
             admin_status = check_workspace_admin_status(creds)
+            has_admin_sdk_access = admin_status.get('hasAdminAccess', False)
             if args.verbose:
-                print(f"\n{colorize('[*] Google Workspace Admin Status Check:', TerminalColors.CYAN)}")
-                if admin_status['hasAdminAccess']:
-                    print(f"    {colorize('✓ ADMIN ACCESS', TerminalColors.GREEN)}: {admin_status['adminLevel']}")
-                    has_admin_sdk_access = True
+                print(f"\n{colorize('[*] Directory / Cloud Identity access probe:', TerminalColors.CYAN)}")
+                if has_admin_sdk_access:
+                    print(f"    {colorize('✓ DIRECTORY READ', TerminalColors.GREEN)}: {admin_status.get('adminLevel')}")
                 else:
-                    print(f"    {colorize('✗ NO ADMIN ACCESS', TerminalColors.YELLOW)}")
-                    has_admin_sdk_access = False
-            else:
-                has_admin_sdk_access = admin_status['hasAdminAccess']
+                    print(f"    {colorize('✗ NO DIRECTORY READ', TerminalColors.YELLOW)}")
+                    if admin_status.get('error'):
+                        print(f"    {admin_status['error']}")
+                    print("    Tip: Users/Groups Read Admin API privileges (not Super Admin), "
+                          "Cloud Identity groups.readonly, or rely on IAM-derived principals")
         except Exception as e:
-            handle_api_error(e, "Workspace admin check", args)
+            handle_api_error(e, "Directory access check", args)
             has_admin_sdk_access = False
         
         print(f"\n[*] Phase 3: Resource Enumeration")
@@ -343,36 +345,40 @@ For more authentication details: https://cloud.google.com/docs/authentication
             except Exception as e:
                 handle_api_error(e, "Logging enumeration", args)
 
-        # Phase 3A: IAM collection
+        # Phase 3A: Org + folder structure (needed before org/folder IAM)
         if args.verbose:
-            print(f"\n[*] Phase 3A: IAM Policy Enumeration")
+            print(f"\n[*] Phase 3A: Organizational Structure Enumeration")
         try:
-            iam_data = collect_iam(creds, projects, args)
+            orgs = collect_orgs(creds)
+        except Exception as e:
+            handle_api_error(e, "Organization enumeration", args)
+            orgs = []
+        try:
+            folders, folder_hierarchy = collect_folders(creds, orgs)
+        except Exception as e:
+            handle_api_error(e, "Folder enumeration", args)
+            folders, folder_hierarchy = [], {}
+
+        # Phase 3B: IAM collection (projects + orgs + folders)
+        if args.verbose:
+            print(f"\n[*] Phase 3B: IAM Policy Enumeration")
+        try:
+            iam_data = collect_iam(creds, projects, args, orgs=orgs, folders=folders)
             outbound_permissions = analyze_cross_project_permissions(creds, user, projects)
         except Exception as e:
             handle_api_error(e, "IAM enumeration", args)
             iam_data = []
             outbound_permissions = []
             
-            # NEW: Service Account Permission Analysis
+        # Service Account Permission Analysis
         service_account_permissions = []
         if sacs and iam_data:
             if args.verbose:
-                print(f"[*] Phase 3A2: Service Account Permission Analysis")
+                print(f"[*] Phase 3B2: Service Account Permission Analysis")
             try:
                 service_account_permissions = collect_service_account_permissions(creds, sacs, projects, args)
             except Exception as e:
                 handle_api_error(e, "Service account permission analysis", args)
-
-        
-        # Phase 3B: Folder collection  
-        if args.verbose:
-            print(f"\n[*] Phase 3B: Organizational Structure Enumeration")
-        try:
-            folders, folder_hierarchy = collect_folders(creds, [])
-        except Exception as e:
-            handle_api_error(e, "Folder enumeration", args)
-            folders, folder_hierarchy = [], {}
         
         # Clean summary for non-verbose mode
         if not args.verbose:
@@ -386,24 +392,26 @@ For more authentication details: https://cloud.google.com/docs/authentication
             if log_sinks or log_buckets or log_metrics:
                 total_logging = len(log_sinks) + len(log_buckets) + len(log_metrics)
                 summary_items.append(f"{total_logging} logging resources")
+            if orgs: summary_items.append(f"{len(orgs)} orgs")
+            if folders: summary_items.append(f"{len(folders)} folders")
+            if iam_data: summary_items.append(f"{len(iam_data)} IAM policies")
             
             if summary_items:
                 print(f"[+] Found: {', '.join(summary_items)}")
             else:
                 print(f"[!] Limited resource access - enable APIs or use higher privileges")
 
-        # Conditional Users/Groups enumeration
+        # Users/Groups: always attempt (collector handles Admin SDK + Cloud Identity fallbacks).
+        # Pass iam_data so group emails seen only in org/folder/project bindings still get
+        # members.list expansion when Directory access works.
         users, groups, group_memberships = [], [], []
-        if has_admin_sdk_access:
-            try:
-                users, groups, group_memberships = collect_users(creds, projects)
-                if args.verbose:
-                    print(f"[*] Found: {len(users)} users, {len(groups)} groups")
-            except Exception as e:
-                handle_api_error(e, "User/group enumeration", args)
-        else:
+        try:
+            users, groups, group_memberships = collect_users(creds, projects, iam_data=iam_data)
             if args.verbose:
-                print(f"\n{colorize('[*] Skipping Google Workspace user/group enumeration - Admin SDK access not available', TerminalColors.YELLOW)}")
+                print(f"[*] Found: {len(users)} users, {len(groups)} groups, "
+                      f"{len(group_memberships)} memberships")
+        except Exception as e:
+            handle_api_error(e, "User/group enumeration", args)
 
         # Phase 4A: Service Account Key Analysis
         key_analysis = []
@@ -475,8 +483,14 @@ For more authentication details: https://cloud.google.com/docs/authentication
                 handle_api_error(e, "GKE escalation analysis", args)
 
         # Phase 4F: Users/Groups Privilege Escalation Analysis
-        users_groups_escalation = {}
-        if users and sacs:
+        users_groups_escalation = {
+            'adminUsers': [],
+            'privilegedGroups': [],
+            'externalUsers': [],
+            'suspiciousMemberships': [],
+            'escalationRisk': 'LOW',
+        }
+        if (users or groups or group_memberships) and sacs:
             if args.verbose:
                 print(f"\n[*] Phase 4F: Users/Groups Privilege Escalation Analysis")
             try:
@@ -520,6 +534,9 @@ For more authentication details: https://cloud.google.com/docs/authentication
         # Phase 5: Build ALL edges
         if args.verbose:
             print(f"\n[*] Phase 5: Building Complete Attack Path Graph")
+        # Initialize so summary/export still work if edge building partially fails
+        logging_edges = []
+        all_edges = []
         try:
             base_edges = build_edges(projects, iam_data, [], sacs, buckets, secrets, bigquery_datasets)
             key_access_edges = build_key_access_edges(sacs, key_analysis, user) if key_analysis else []
@@ -527,11 +544,12 @@ For more authentication details: https://cloud.google.com/docs/authentication
             compute_edges = build_compute_instance_edges(instances, instance_escalation_analysis, user) if instances else []
             #bigquery_edges = build_bigquery_edges(bigquery_datasets, bigquery_access_analysis, user) if bigquery_datasets else []
             gke_edges = build_gke_edges(gke_clusters, gke_escalation_analysis, user) if gke_clusters else []
-            users_groups_edges = build_users_groups_edges(users, groups, group_memberships, users_groups_escalation, user) if users else []
+            users_groups_edges = (
+                build_users_groups_edges(users, groups, group_memberships, users_groups_escalation, user)
+                if (users or groups or group_memberships) else []
+            )
             sa_permission_edges = build_service_account_permission_edges(service_account_permissions) if service_account_permissions else []
             
-            
-            logging_edges = []
             if log_sinks or log_buckets or log_metrics:
                 try:
                     logging_edges = build_logging_edges(

@@ -1,39 +1,75 @@
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-def collect_iam(creds, projects, args=None):
+def collect_iam(creds, projects, args=None, orgs=None, folders=None):
     """
-    Enumerate IAM policies and bindings across all accessible projects.
-    Returns comprehensive IAM data for security analysis.
+    Enumerate IAM policies across projects, organizations, and folders.
+    Returns a list of policy dicts; each includes resourceType + resourceName.
     """
     iam_data = []
-    
-    if not creds or not projects:
+
+    if not creds:
         if args and args.debug:
-            print("[DEBUG] No credentials or projects provided to IAM collector")
+            print("[DEBUG] No credentials provided to IAM collector")
         return iam_data
-    
+
+    if projects:
+        iam_data.extend(_collect_project_iam(creds, projects, args))
+    elif args and args.debug:
+        print("[DEBUG] No projects provided to IAM collector")
+
+    if orgs:
+        iam_data.extend(_collect_organization_iam(creds, orgs, args))
+
+    if folders:
+        iam_data.extend(_collect_folder_iam(creds, folders, args))
+
+    if args and args.verbose:
+        by_type = {}
+        for policy in iam_data:
+            rtype = policy.get("resourceType", "unknown")
+            by_type[rtype] = by_type.get(rtype, 0) + 1
+        summary = ", ".join(f"{count} {rtype}" for rtype, count in sorted(by_type.items()))
+        print(f"[+] IAM Collector: Completed analysis of {len(iam_data)} policies ({summary or 'none'})")
+    return iam_data
+
+
+def _log_iam_http_error(args, scope_label, resource_id, error):
+    if args and args.debug:
+        print(f"[DEBUG] IAM getIamPolicy failed for {scope_label} {resource_id}: {error}")
+    elif args and args.verbose:
+        if "SERVICE_DISABLED" in str(error) or "Cloud Resource Manager API" in str(error):
+            print(f"[!] IAM policy enumeration: API not enabled for {scope_label} {resource_id}")
+        elif getattr(error, "resp", None) is not None and error.resp.status == 403:
+            print(f"[!] IAM policy enumeration: Insufficient permissions for {scope_label} {resource_id} "
+                  f"(needs resourcemanager.{scope_label}s.getIamPolicy or roles/iam.securityReviewer)")
+        else:
+            print(f"[!] IAM enumeration error for {scope_label} {resource_id}")
+
+
+def _collect_project_iam(creds, projects, args=None):
+    iam_data = []
     try:
         crm = build("cloudresourcemanager", "v1", credentials=creds)
         if args and args.verbose:
             print(f"[*] IAM Collector: Analyzing {len(projects)} projects for IAM bindings...")
-        
+
         for project in projects:
             project_id = project.get("projectId")
             if not project_id:
                 continue
-            
+
             try:
-                # Get IAM policy for the project
                 policy = crm.projects().getIamPolicy(
                     resource=project_id,
                     body={}
                 ).execute()
-                
+
                 bindings = policy.get("bindings", [])
-                
                 if bindings:
                     iam_data.append({
+                        "resourceType": "project",
+                        "resourceName": f"projects/{project_id}",
                         "projectId": project_id,
                         "projectName": project.get("name", project_id),
                         "bindings": bindings,
@@ -43,38 +79,130 @@ def collect_iam(creds, projects, args=None):
                     })
                     if args and args.verbose:
                         print(f"[+] Found {len(bindings)} IAM bindings in project: {project_id}")
-                else:
-                    if args and args.verbose:
-                        print(f"[~] No IAM bindings found in project: {project_id}")
-                    
+                elif args and args.verbose:
+                    print(f"[~] No IAM bindings found in project: {project_id}")
+
             except HttpError as e:
-                if args and args.debug:
-                    if e.resp.status == 403:
-                        print(f"[DEBUG] Permission denied for project {project_id}: {e}")
-                    elif e.resp.status == 404:
-                        print(f"[DEBUG] Project not found {project_id}: {e}")
-                    else:
-                        print(f"[DEBUG] HTTP error for project {project_id}: {e}")
-                elif "SERVICE_DISABLED" in str(e) or "Cloud Resource Manager API" in str(e):
-                    if args and args.verbose:
-                        print(f"[!] IAM policy enumeration: API not enabled for {project_id}")
-                elif e.resp.status == 403:
-                    if args and args.verbose:
-                        print(f"[!] IAM policy enumeration: Insufficient permissions for {project_id}")
+                _log_iam_http_error(args, "project", project_id, e)
             except Exception as e:
                 if args and args.debug:
                     print(f"[DEBUG] Unexpected error for project {project_id}: {e}")
                 elif args and args.verbose:
                     print(f"[!] IAM enumeration error for {project_id}")
-                
+
     except Exception as e:
         if args and args.debug:
             print(f"[DEBUG] Failed to initialize Cloud Resource Manager: {e}")
         elif args and args.verbose:
             print("[!] IAM enumeration: Failed to initialize service")
-    
-    if args and args.verbose:
-        print(f"[+] IAM Collector: Completed analysis of {len(iam_data)} projects with IAM data")
+
+    return iam_data
+
+
+def _collect_organization_iam(creds, orgs, args=None):
+    """Collect org-level IAM. Needs resourcemanager.organizations.getIamPolicy."""
+    iam_data = []
+    try:
+        crm = build("cloudresourcemanager", "v1", credentials=creds)
+        if args and args.verbose:
+            print(f"[*] IAM Collector: Analyzing {len(orgs)} organizations for IAM bindings...")
+
+        for org in orgs:
+            resource_name = org.get("name", "")
+            if not resource_name.startswith("organizations/"):
+                org_id = resource_name or org.get("organizationId", "")
+                if not org_id:
+                    continue
+                resource_name = f"organizations/{org_id}"
+            org_id = resource_name.replace("organizations/", "")
+
+            try:
+                policy = crm.organizations().getIamPolicy(
+                    resource=resource_name,
+                    body={}
+                ).execute()
+                bindings = policy.get("bindings", [])
+                if bindings:
+                    iam_data.append({
+                        "resourceType": "organization",
+                        "resourceName": resource_name,
+                        "organizationId": org_id,
+                        "organizationName": org.get("displayName", org_id),
+                        "bindings": bindings,
+                        "bindingCount": len(bindings),
+                        "etag": policy.get("etag", ""),
+                        "version": policy.get("version", 1)
+                    })
+                    if args and args.verbose:
+                        print(f"[+] Found {len(bindings)} IAM bindings on organization: {resource_name}")
+                elif args and args.verbose:
+                    print(f"[~] No IAM bindings found on organization: {resource_name}")
+            except HttpError as e:
+                _log_iam_http_error(args, "organization", resource_name, e)
+            except Exception as e:
+                if args and args.debug:
+                    print(f"[DEBUG] Unexpected error for organization {resource_name}: {e}")
+
+    except Exception as e:
+        if args and args.debug:
+            print(f"[DEBUG] Failed to initialize CRM for org IAM: {e}")
+        elif args and args.verbose:
+            print("[!] Organization IAM enumeration: Failed to initialize service")
+
+    return iam_data
+
+
+def _collect_folder_iam(creds, folders, args=None):
+    """Collect folder-level IAM. Needs resourcemanager.folders.getIamPolicy."""
+    iam_data = []
+    try:
+        # Folder IAM lives on Resource Manager v2/v3, not v1 projects API.
+        crm = build("cloudresourcemanager", "v2", credentials=creds)
+        if args and args.verbose:
+            print(f"[*] IAM Collector: Analyzing {len(folders)} folders for IAM bindings...")
+
+        for folder in folders:
+            resource_name = folder.get("name", "")
+            if not resource_name.startswith("folders/"):
+                folder_id = resource_name or folder.get("folderId", "")
+                if not folder_id:
+                    continue
+                resource_name = f"folders/{folder_id}"
+            folder_id = resource_name.replace("folders/", "")
+
+            try:
+                policy = crm.folders().getIamPolicy(
+                    resource=resource_name,
+                    body={}
+                ).execute()
+                bindings = policy.get("bindings", [])
+                if bindings:
+                    iam_data.append({
+                        "resourceType": "folder",
+                        "resourceName": resource_name,
+                        "folderId": folder_id,
+                        "folderName": folder.get("displayName", folder_id),
+                        "bindings": bindings,
+                        "bindingCount": len(bindings),
+                        "etag": policy.get("etag", ""),
+                        "version": policy.get("version", 1)
+                    })
+                    if args and args.verbose:
+                        print(f"[+] Found {len(bindings)} IAM bindings on folder: {resource_name}")
+                elif args and args.verbose:
+                    print(f"[~] No IAM bindings found on folder: {resource_name}")
+            except HttpError as e:
+                _log_iam_http_error(args, "folder", resource_name, e)
+            except Exception as e:
+                if args and args.debug:
+                    print(f"[DEBUG] Unexpected error for folder {resource_name}: {e}")
+
+    except Exception as e:
+        if args and args.debug:
+            print(f"[DEBUG] Failed to initialize CRM v2 for folder IAM: {e}")
+        elif args and args.verbose:
+            print("[!] Folder IAM enumeration: Failed to initialize service")
+
     return iam_data
 
 def analyze_cross_project_permissions(creds, current_user, projects, args=None):

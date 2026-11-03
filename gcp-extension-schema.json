@@ -2,7 +2,7 @@
   "schema": {
     "name": "GCPHound",
     "display_name": "GCP-Hound (OpenGraph)",
-    "version": "v1.0.0",
+    "version": "v1.1.1",
     "namespace": "GCP"
   },
   "node_kinds": [
@@ -448,6 +448,20 @@
       }
     },
     {
+      "name": "GCP_CanModifyFolderPolicy",
+      "description": "GCP-Hound relationship CanModifyFolderPolicy",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanModifyFolderPolicy` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
       "name": "GCP_CanModifyIamPolicy",
       "description": "GCP-Hound relationship CanModifyIamPolicy",
       "is_traversable": true,
@@ -457,6 +471,20 @@
           "position": 1,
           "markdown": {
             "content": "This `CanModifyIamPolicy` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_CanModifyOrganizationPolicy",
+      "description": "GCP-Hound relationship CanModifyOrganizationPolicy",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `CanModifyOrganizationPolicy` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
           }
         }
       }
@@ -557,9 +585,46 @@
       "is_traversable": false
     },
     {
+      "name": "GCP_HasRoleOnFolder",
+      "description": "GCP-Hound relationship HasRoleOnFolder",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `HasRoleOnFolder` edge is traversable for pathfinding (identity membership or IAM role grant)."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_HasRoleOnOrganization",
+      "description": "GCP-Hound relationship HasRoleOnOrganization",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `HasRoleOnOrganization` edge is traversable for pathfinding (identity membership or IAM role grant)."
+          }
+        }
+      }
+    },
+    {
       "name": "GCP_HasRoleOnProject",
       "description": "GCP-Hound relationship HasRoleOnProject",
-      "is_traversable": false
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `HasRoleOnProject` edge is traversable for pathfinding (identity membership or IAM role grant)."
+          }
+        }
+      }
     },
     {
       "name": "GCP_HighPrivilegeServiceAccount",
@@ -578,12 +643,58 @@
     {
       "name": "GCP_MemberOf",
       "description": "GCP-Hound relationship MemberOf",
-      "is_traversable": false
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `MemberOf` edge is traversable for pathfinding (identity membership or IAM role grant)."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_MemberOfFolder",
+      "description": "GCP-Hound relationship MemberOfFolder",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `MemberOfFolder` edge is traversable for pathfinding (identity membership or IAM role grant)."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_MemberOfOrganization",
+      "description": "GCP-Hound relationship MemberOfOrganization",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `MemberOfOrganization` edge is traversable for pathfinding (identity membership or IAM role grant)."
+          }
+        }
+      }
     },
     {
       "name": "GCP_MemberOfProject",
       "description": "GCP-Hound relationship MemberOfProject",
-      "is_traversable": false
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `MemberOfProject` edge is traversable for pathfinding (identity membership or IAM role grant)."
+          }
+        }
+      }
     },
     {
       "name": "GCP_OwnsDataset",
@@ -591,9 +702,46 @@
       "is_traversable": false
     },
     {
+      "name": "GCP_OwnsFolder",
+      "description": "GCP-Hound relationship OwnsFolder",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `OwnsFolder` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
+      "name": "GCP_OwnsOrganization",
+      "description": "GCP-Hound relationship OwnsOrganization",
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `OwnsOrganization` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+          }
+        }
+      }
+    },
+    {
       "name": "GCP_OwnsProject",
       "description": "GCP-Hound relationship OwnsProject",
-      "is_traversable": false
+      "is_traversable": true,
+      "info": {
+        "abuse": {
+          "title": "Abuse",
+          "position": 1,
+          "markdown": {
+            "content": "This `OwnsProject` edge is traversable for pathfinding (identity membership or IAM role grant)."
+          }
+        }
+      }
     },
     {
       "name": "GCP_OwnsSecret",

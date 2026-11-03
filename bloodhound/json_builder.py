@@ -1106,6 +1106,43 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         for variation in normalize_variations(instance_id, discovered_project_names):
             node_id_map[variation] = instance_id
 
+    # Directory users (Admin SDK). BloodHound search indexes name/displayname;
+    # edge-only stubs without those properties are not findable in the UI.
+    for user in users or []:
+        user_email = (user.get('email') or user.get('primaryEmail') or '').strip().lower()
+        if not user_email or '@' not in user_email:
+            continue
+        display = (user.get('name') or user.get('fullName') or user_email)
+        if isinstance(display, dict):
+            display = display.get('fullName') or user_email
+        clean_properties = {
+            "name": user_email,
+            "displayname": display,
+            "email": user_email,
+            "username": user_email.split('@')[0],
+            "domain": user_email.split('@')[1] if '@' in user_email else 'unknown',
+            "platform": "GCP",
+            "description": f"GCP User: {display}",
+            "gcpResourceType": "User Account",
+            "riskLevel": user.get('riskLevel', 'Unknown'),
+            "isAdmin": user.get('isAdmin', False),
+            "isDelegatedAdmin": user.get('isDelegatedAdmin', False),
+            "suspended": user.get('suspended', False),
+            "source": "directory",
+        }
+        if user_email in graph.nodes:
+            for variation in normalize_variations(user_email, discovered_project_names):
+                node_id_map[variation] = user_email
+            continue
+
+        graph.add_node(Node(
+            id=user_email,
+            kinds=["GCP_User", "GCP_Resource"],
+            properties=Properties(**sanitize_node_properties(clean_properties)),
+        ))
+        for variation in normalize_variations(user_email, discovered_project_names):
+            node_id_map[variation] = user_email
+
     # Add group nodes using ONLY real enumerated data (groups were collected
     # via the Admin SDK but never exported as nodes; edges reference the raw
     # group email)
@@ -1243,8 +1280,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             node_id_map[variation] = current_user
 
     # ---- NEW: Add edge types for new relationships ----
-    # Add Project -> HasGoogleOwnedSA -> GoogleManagedSA edges
+    # Add Project -> HasGoogleOwnedSA -> GoogleManagedSA edges (project policies only)
     for policy in iam_data or []:
+        if (policy.get('resourceType') or 'project') not in ('project', ''):
+            continue
         project_id = extract_project_from_iam_policy(policy)
         for binding in policy.get('bindings', []):
             for member in binding.get('members', []):
@@ -1262,8 +1301,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                             }
                         })
 
-    # Add User -> OwnsProject/MemberOfProject -> Project edges
+    # Add User -> OwnsProject/MemberOfProject -> Project edges (project policies only)
     for policy in iam_data or []:
+        if (policy.get('resourceType') or 'project') not in ('project', ''):
+            continue
         project_id = extract_project_from_iam_policy(policy)
         for binding in policy.get('bindings', []):
             role = binding.get('role', '').lower()
@@ -1423,6 +1464,18 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                 f"GCP Project: {node_id}"
             )
         
+        # Organization / folder resource names
+        if node_id.startswith("organizations/"):
+            return (
+                ["GCP_Organization", "GCP_Resource"],
+                f"GCP Organization: {node_id}"
+            )
+        if node_id.startswith("folders/"):
+            return (
+                ["GCP_Folder", "GCP_Resource"],
+                f"GCP Folder: {node_id}"
+            )
+
         # Log sink/stream
         if "logstream:" in node_id or "sink:" in node_id:
             return (
@@ -1471,16 +1524,25 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                 continue
             # USE infer_node_kinds() detection for 15+ GCP resource types
             kinds, desc = infer_node_kinds(node_id)
-            # Create node with minimal properties
+            # BloodHound CE search indexes name/displayname — always set them.
+            props = {
+                "name": resolved_id,
+                "displayname": resolved_id,
+                "platform": "GCP",
+                "description": desc,
+            }
+            if "@" in resolved_id and "gserviceaccount.com" not in resolved_id:
+                props["email"] = resolved_id
+                props["username"] = resolved_id.split("@")[0]
+                props["domain"] = resolved_id.split("@")[1] if "@" in resolved_id else "unknown"
+                props["gcpResourceType"] = "User Account"
+            elif "@" in resolved_id:
+                props["email"] = resolved_id
+                props["gcpResourceType"] = "Service Account"
             graph.add_node(Node(
                 id=resolved_id,
                 kinds=kinds,
-                properties=Properties(
-                    **sanitize_node_properties({
-                        "platform": "GCP",
-                        "description": desc,
-                    })
-                )
+                properties=Properties(**sanitize_node_properties(props))
             ))
             for variation in normalize_variations(node_id, discovered_project_names):
                 node_id_map[variation] = resolved_id

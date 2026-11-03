@@ -360,13 +360,17 @@ def analyze_users_groups_privilege_escalation(users, groups, group_memberships, 
     
     # Analyze privileged groups
     for group in groups:
-        if group['riskLevel'] == 'HIGH' or len(group['members']) > 50:
+        member_count = len(group.get('members') or [])
+        if member_count == 0:
+            member_count = int(group.get('directMembersCount') or 0)
+        risk = group.get('riskLevel', 'LOW')
+        if risk == 'HIGH' or member_count > 50:
             escalation_analysis['privilegedGroups'].append({
                 'email': group['email'],
-                'memberCount': len(group['members']),
-                'riskLevel': group['riskLevel']
+                'memberCount': member_count,
+                'riskLevel': risk
             })
-            print(f"    {colorize('👥 LARGE GROUP', TerminalColors.YELLOW)} {group['email']}: {len(group['members'])} members - potential privilege inheritance")
+            print(f"    {colorize('👥 LARGE GROUP', TerminalColors.YELLOW)} {group['email']}: {member_count} members - potential privilege inheritance")
     
     # Analyze external users
     for user in users:
@@ -413,12 +417,16 @@ def build_users_groups_edges(users, groups, group_memberships, escalation_analys
     """
     edges = []
     
+    escalation_analysis = escalation_analysis or {}
+
     # Edges: Users belong to groups (nodes use the raw user/group emails)
-    for membership in group_memberships:
-        user_email = membership['memberEmail']
-        group_email = membership['groupEmail']
-        role = membership['role']
-        
+    for membership in group_memberships or []:
+        user_email = membership.get('memberEmail')
+        group_email = membership.get('groupEmail')
+        role = membership.get('role', 'MEMBER')
+        if not user_email or not group_email:
+            continue
+
         edges.append({
             "start": {"value": user_email.lower()},
             "end": {"value": group_email.lower()},
@@ -426,15 +434,15 @@ def build_users_groups_edges(users, groups, group_memberships, escalation_analys
             "properties": {
                 "source": "users_groups_enumeration",
                 "role": role,
-                "memberType": membership['type'],
-                "status": membership['status'],
+                "memberType": membership.get('type', 'USER'),
+                "status": membership.get('status', 'ACTIVE'),
                 "description": f"User {user_email} is {role} of group {group_email}"
             }
         })
     
     # Edges: Administrative privilege escalation (nodes use raw emails;
     # session edges start at the signed-in user's email)
-    for admin_user in escalation_analysis['adminUsers']:
+    for admin_user in escalation_analysis.get('adminUsers', []):
         user_email = admin_user['email']
         
         edges.append({
@@ -451,7 +459,7 @@ def build_users_groups_edges(users, groups, group_memberships, escalation_analys
         })
     
     # Edges: Group-based privilege inheritance (nodes use raw emails)
-    for priv_group in escalation_analysis['privilegedGroups']:
+    for priv_group in escalation_analysis.get('privilegedGroups', []):
         group_email = priv_group['email']
         
         edges.append({

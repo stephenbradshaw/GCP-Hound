@@ -328,25 +328,48 @@ def build_service_account_edges(service_accounts, projects, iam_data=None, debug
         print(f"[WARNING] Skipped {edges_skipped} invalid service account edges")
     return edges
 
-def determine_enhanced_edge_kind_from_role(role):
-    """Map role to enhanced edge kind for IAM edges"""
+def determine_enhanced_edge_kind_from_role(role, resource_type='project'):
+    """Map role to enhanced edge kind for IAM edges (project / folder / organization)."""
     role_lower = role.lower()
+    resource_type = (resource_type or 'project').lower()
 
-    # Only roles/owner gets OwnsProject
+    if resource_type == 'organization':
+        if role_lower in ('roles/owner', 'roles/resourcemanager.organizationadmin'):
+            return 'OwnsOrganization'
+        if role_lower in (
+            'roles/resourcemanager.organizationroleadmin',
+            'roles/iam.organizationroleadmin',
+            'roles/iam.securityadmin',
+        ):
+            return 'CanModifyOrganizationPolicy'
+        if role_lower in ('roles/viewer', 'roles/browser', 'roles/resourcemanager.organizationviewer'):
+            return 'MemberOfOrganization'
+        return 'HasRoleOnOrganization'
+
+    if resource_type == 'folder':
+        if role_lower in ('roles/owner', 'roles/resourcemanager.folderadmin'):
+            return 'OwnsFolder'
+        if role_lower in (
+            'roles/resourcemanager.folderiamadmin',
+            'roles/iam.securityadmin',
+        ):
+            return 'CanModifyFolderPolicy'
+        if role_lower in ('roles/viewer', 'roles/browser', 'roles/resourcemanager.folderviewer'):
+            return 'MemberOfFolder'
+        return 'HasRoleOnFolder'
+
+    # Project (default)
     if role_lower == 'roles/owner':
         return 'OwnsProject'
 
-    # Only actual IAM management roles get ManageProjectIAM
     if role_lower in ['roles/resourcemanager.projectiamadmin', 'roles/iam.securityadmin', 'roles/iam.organizationadmin']:
         return 'ManageProjectIAM'
 
-    # Core project roles
     if role_lower == 'roles/editor':
         return 'CanEditProject'
     if role_lower in ['roles/viewer', 'roles/browser']:
         return 'CanViewProject'
 
-    # Service-specific admin roles (only if truly admin)
     if role_lower.startswith('roles/compute.') and 'admin' in role_lower:
         return 'ManageProjectCompute'
     if role_lower.startswith('roles/storage.') and 'admin' in role_lower:
@@ -354,16 +377,29 @@ def determine_enhanced_edge_kind_from_role(role):
     if role_lower.startswith('roles/bigquery.') and 'admin' in role_lower:
         return 'ManageProjectBigQuery'
 
-    # Service-scoped roles should NOT imply project administration
     if role_lower.startswith(('roles/datastore.', 'roles/firebase.', 'roles/firebaseauth.', 'roles/firebasedatabase.')):
         return 'HasRoleOnProject'
 
-    # Generic admin (only after service-specific checks)
     if 'admin' in role_lower and not any(x in role_lower for x in ['datastore', 'firebase']):
         return 'AdministerProject'
 
-    # Default for all other roles
     return 'HasRoleOnProject'
+
+
+def _iam_policy_target(iam_policy):
+    """Return (resource_type, resource_name) for an IAM policy entry."""
+    resource_type = (iam_policy.get('resourceType') or '').lower()
+    resource_name = iam_policy.get('resourceName', '')
+
+    if resource_type == 'organization' or iam_policy.get('organizationId'):
+        org_id = iam_policy.get('organizationId') or resource_name.replace('organizations/', '')
+        return 'organization', resource_name or f'organizations/{org_id}'
+    if resource_type == 'folder' or iam_policy.get('folderId'):
+        folder_id = iam_policy.get('folderId') or resource_name.replace('folders/', '')
+        return 'folder', resource_name or f'folders/{folder_id}'
+
+    project_id = (iam_policy.get('projectId') or '').lower()
+    return 'project', project_id
 
 def get_attack_surface_for_role(role):
     """Get attack surface description for GCP role"""
@@ -400,7 +436,11 @@ def build_iam_binding_edges(iam_data, projects, debug=False):
     edges_skipped = 0
 
     for iam_policy in iam_data:
-        project_id = iam_policy.get('projectId', '').lower()
+        resource_type, resource_name = _iam_policy_target(iam_policy)
+        if not resource_name:
+            edges_skipped += 1
+            continue
+
         bindings = iam_policy.get('bindings', [])
 
         for binding in bindings:
@@ -420,29 +460,34 @@ def build_iam_binding_edges(iam_data, projects, debug=False):
                 else:
                     continue
 
-                edge_kind = determine_enhanced_edge_kind_from_role(role)
+                edge_kind = determine_enhanced_edge_kind_from_role(role, resource_type)
                 risk_level = determine_risk_level_from_role(role)
+
+                properties = {
+                    "source": "iam_policy_binding",
+                    "role": role,
+                    "riskLevel": risk_level,
+                    "memberType": member_type,
+                    "resourceType": resource_type,
+                    "resourceName": resource_name,
+                    "attackSurface": get_attack_surface_for_role(role),
+                    "description": f"{member_type} {member_id} has {role} on {resource_type} {resource_name}"
+                }
+                if resource_type == 'project':
+                    properties["projectId"] = resource_name
 
                 success = safe_add_edge(
                     edges=edges,
                     start_id=member_id,
-                    end_id=project_id,
+                    end_id=resource_name,
                     kind=edge_kind,
-                    properties={
-                        "source": "iam_policy_binding",
-                        "role": role,
-                        "riskLevel": risk_level,
-                        "memberType": member_type,
-                        "projectId": project_id,
-                        "attackSurface": get_attack_surface_for_role(role),
-                        "description": f"{member_type} {member_id} has {role} on project {project_id}"
-                    }
+                    properties=properties
                 )
-                
+
                 if success:
                     edges_created += 1
                     if debug and edges_created <= 5:
-                        print(f"[DEBUG] ✅ IAM edge: {member_id} --[{edge_kind}]-> {project_id}")
+                        print(f"[DEBUG] ✅ IAM edge: {member_id} --[{edge_kind}]-> {resource_name}")
                 else:
                     edges_skipped += 1
 

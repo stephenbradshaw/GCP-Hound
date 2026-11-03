@@ -37,9 +37,47 @@ The tool may currently lack many advanced features, but I'm committed to gradual
 
 **Pathfinding**: Install the OpenGraph extension schema (`register_gcp_nodes.py`) before uploading exports. Without it, BloodHound treats the file as a generic graph (Cypher/search only). With the schema installed, traversable GCP abuse edges participate in CE pathfinding.
 - **API Coverage**: GCP-Hound relies on Google Cloud APIs for enumeration. Some APIs or services may be disabled in target projects by default, resulting in partial data collection. Enabling additional APIs (e.g., via the gcloud CLI) may improve coverage, but this tool is strictly read-only and does not modify cloud configurations.
-- - **User and Group Enumeration**: Unlike Azure Entra ID (AAD) or on-premises Active Directory, GCP does not reliably expose APIs to enumerate all users or groups within an organization or project by default. Enumeration of users and groups is only possible if the executing account has sufficient permissions (such as admin privileges or delegated directory roles). Otherwise, group/user visibility is limited or unavailable.
+- **User and Group Enumeration**: Full directory listing needs Admin SDK Directory read (Users / Groups Read — **not** Workspace Super Admin) or Cloud Identity Groups read. Without that, GCP-Hound still materializes principals from IAM bindings (project/folder/org), but group membership edges will be incomplete.
+- **Org / folder IAM**: `roles/browser`, `organizationViewer`, and `folderViewer` can see hierarchy but **cannot** call `getIamPolicy`. Org/folder bindings require `*.getIamPolicy` (e.g. `roles/iam.securityReviewer` or a custom role).
 - **Environment Scope**: The tool has primarily been tested in lab and CTF settings. Results in large-scale or production GCP organizations may be incomplete or contain gaps.
 - **Edge/Description Accuracy**: Some edge relationship descriptions are generated heuristically and may be imprecise in certain contexts due to the diversity of real-world GCP configurations.
+
+## Required permissions (least privilege)
+
+### GCP Resource Manager / IAM (org + folder + project bindings)
+
+| Goal | Permission(s) | Practical role |
+| --- | --- | --- |
+| List orgs / folders / projects | `resourcemanager.*.get` / `list` | `roles/browser` or Viewer at org |
+| **Read project IAM** | `resourcemanager.projects.getIamPolicy` | Project IAM Viewer / Security Reviewer |
+| **Read folder IAM** | `resourcemanager.folders.getIamPolicy` | **Not** in `folderViewer` |
+| **Read org IAM** | `resourcemanager.organizations.getIamPolicy` | **Not** in `organizationViewer` |
+| Read IAM broadly (recommended) | all of the above (+ many service `getIamPolicy`) | `roles/iam.securityReviewer` at org |
+
+Custom least-privilege role example (org scope):
+
+```text
+resourcemanager.organizations.get
+resourcemanager.organizations.getIamPolicy
+resourcemanager.folders.get
+resourcemanager.folders.list
+resourcemanager.folders.getIamPolicy
+resourcemanager.projects.get
+resourcemanager.projects.list
+resourcemanager.projects.getIamPolicy
+```
+
+### Google Workspace / Cloud Identity directory
+
+| Goal | What you need | Notes |
+| --- | --- | --- |
+| List users | Admin SDK **Users Read** (Admin API privilege) | Custom admin role is enough; Super Admin not required |
+| List groups + members | Admin SDK **Groups Read** | Same — custom role OK |
+| Groups without Workspace Admin | Cloud Identity Groups API (`groups.readonly` / Group Viewer) | Users still missing unless Users Read granted |
+| OAuth scopes (user ADC) | `admin.directory.user.readonly`, `admin.directory.group.readonly`, `admin.directory.group.member.readonly` | Plus Cloud Identity groups scope if using that path |
+| No directory access | — | Principals still appear from collected IAM members |
+
+Without org/folder `getIamPolicy`, attack paths that start from org- or folder-level grants are invisible even if project IAM is fully collected.
 
 ## Known Issues
 

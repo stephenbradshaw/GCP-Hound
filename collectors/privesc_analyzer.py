@@ -18,33 +18,65 @@ def colorize(text, color):
     return f"{color}{text}{TerminalColors.RESET}"
 
 def check_workspace_admin_status(creds):
-    """Check if current credentials have Google Workspace admin privileges."""
+    """
+    Probe Directory / Cloud Identity read access.
+
+    Super Admin is NOT required. Users Read + Groups Read (or a custom Admin
+    API role with users.list / groups.list) is enough. Groups-only Cloud
+    Identity access is reported separately.
+    """
     admin_status = {
         'hasAdminAccess': False,
+        'hasGroupsAccess': False,
         'adminLevel': 'None',
         'error': None
     }
-    
+
     try:
         admin_service = build('admin', 'directory_v1', credentials=creds)
-        test_request = admin_service.users().list(customer='my_customer', maxResults=1)
-        test_response = test_request.execute()
-        
+        admin_service.users().list(customer='my_customer', maxResults=1).execute()
         admin_status['hasAdminAccess'] = True
-        admin_status['adminLevel'] = 'Super Admin or Delegated Admin'
-        
+        admin_status['hasGroupsAccess'] = True
+        admin_status['adminLevel'] = 'Directory API read (Users)'
+        return admin_status
     except HttpError as e:
         if e.resp.status == 400 and 'Invalid Input' in str(e):
             admin_status['error'] = 'Invalid Input - missing domain-wide delegation'
         elif e.resp.status == 404:
             admin_status['error'] = 'Domain not found - no Google Workspace organization'
         elif e.resp.status == 403:
-            admin_status['error'] = 'Access denied - insufficient admin privileges'
+            admin_status['error'] = (
+                'Access denied for users.list - grant Users Read Admin API privilege '
+                '(custom role OK; Super Admin not required)'
+            )
         else:
             admin_status['error'] = f'HTTP {e.resp.status}: {str(e)}'
     except Exception as e:
         admin_status['error'] = f'Unexpected error: {str(e)}'
-    
+
+    # Groups-only Admin SDK
+    try:
+        admin_service = build('admin', 'directory_v1', credentials=creds)
+        admin_service.groups().list(customer='my_customer', maxResults=1).execute()
+        admin_status['hasGroupsAccess'] = True
+        admin_status['adminLevel'] = 'Directory API read (Groups only)'
+        # Treat groups-only as enough to attempt directory collection
+        admin_status['hasAdminAccess'] = True
+        return admin_status
+    except Exception:
+        pass
+
+    # Cloud Identity groups fallback probe
+    try:
+        ci = build('cloudidentity', 'v1', credentials=creds)
+        ci.groups().list(parent='customers/my_customer', view='BASIC', pageSize=1).execute()
+        admin_status['hasGroupsAccess'] = True
+        admin_status['hasAdminAccess'] = True
+        admin_status['adminLevel'] = 'Cloud Identity Groups read'
+        admin_status['error'] = None
+    except Exception:
+        pass
+
     return admin_status
 
 class GCPPrivilegeEscalationAnalyzer:
