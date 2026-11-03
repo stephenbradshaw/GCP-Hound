@@ -126,6 +126,76 @@ def sanitize_property_value(value):
         return value  # Keep arrays for node properties
     return str(value)
 
+def sanitize_node_properties(props):
+    """Build OpenGraph-safe node properties.
+
+    BloodHound CE rejects reserved ``objectid`` inside ``properties`` (root
+    ``id`` is the node identifier). Drop it and coerce remaining values.
+    """
+    if not props:
+        return {}
+    return {
+        k: sanitize_property_value(v)
+        for k, v in props.items()
+        if k != "objectid"
+    }
+
+def opengraph_safe_id(node_id):
+    """BloodHound does not fully support colons in OpenGraph object ids."""
+    if node_id is None:
+        return node_id
+    return str(node_id).replace(":", "-")
+
+def apply_opengraph_compliance(data):
+    """Post-process exported graph JSON for BloodHound CE OpenGraph ingest."""
+    if not isinstance(data, dict) or "graph" not in data:
+        return data
+
+    graph = data["graph"]
+    nodes = graph.get("nodes") or []
+    edges = graph.get("edges") or []
+    id_remap = {}
+
+    for node in nodes:
+        # Extra top-level fields are not part of the OpenGraph node schema.
+        node.pop("label", None)
+
+        props = node.get("properties")
+        if isinstance(props, dict):
+            props.pop("objectid", None)
+            node["properties"] = props
+
+        old_id = node.get("id")
+        if isinstance(old_id, str) and ":" in old_id:
+            new_id = opengraph_safe_id(old_id)
+            id_remap[old_id] = new_id
+            node["id"] = new_id
+
+    for edge in edges:
+        for end in ("start", "end"):
+            ref = edge.get(end)
+            if isinstance(ref, dict):
+                value = ref.get("value")
+                if value in id_remap:
+                    ref["value"] = id_remap[value]
+                elif isinstance(value, str) and ":" in value:
+                    ref["value"] = opengraph_safe_id(value)
+                ref["match_by"] = "id"
+            elif isinstance(ref, str):
+                if ref in id_remap:
+                    edge[end] = id_remap[ref]
+                elif ":" in ref:
+                    edge[end] = opengraph_safe_id(ref)
+
+        props = edge.get("properties")
+        if isinstance(props, dict):
+            props.pop("objectid", None)
+            for prop_key, prop_value in list(props.items()):
+                if isinstance(prop_value, list):
+                    props[prop_key] = ", ".join(str(v) for v in prop_value) if prop_value else "None"
+
+    return data
+
 def fix_edge_name(edge_name):
     """Clean up verbose edge names to readable format"""
     edge_mapping = {
@@ -388,7 +458,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             clean_properties = {
                 "name": gmsa_email,
                 "displayname": f"Google {service_name.title()} Service Account",
-                "objectid": gmsa_email,
                 "email": gmsa_email,
                 "platform": "GCP",
                 "description": f"Google-managed service account for {service_name}",
@@ -397,7 +466,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                 "managedBy": "Google"
             }
             
-            sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+            sanitized_properties = sanitize_node_properties(clean_properties)
             
             # FIXED: Only 2 kinds maximum
             gmsa_node = Node(
@@ -430,7 +499,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             clean_properties = {
                 "name": user_email,
                 "displayname": user_email,
-                "objectid": user_email,
                 "email": user_email,
                 "username": username,
                 "domain": domain,
@@ -441,7 +509,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                 "authMethod": "User"
             }
             
-            sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+            sanitized_properties = sanitize_node_properties(clean_properties)
             
             # FIXED: Only 2 kinds maximum
             user_node = Node(
@@ -472,7 +540,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         clean_properties = {
             "name": sa_email,
             "displayname": sa_name,
-            "objectid": sa_email,
             "email": sa_email,
             "short_name": sa_email.split('@')[0] if '@' in sa_email else sa_email,
             "platform": "GCP",
@@ -501,7 +568,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "lastKeyRotation": sa.get('lastKeyRotation', 'Unknown')
         }
         
-        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        sanitized_properties = sanitize_node_properties(clean_properties)
         
         # FIXED: Only 2 kinds maximum
         sa_node = Node(
@@ -542,7 +609,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                         clean_properties = {
                             "name": sa_email,
                             "displayname": sa_email,
-                            "objectid": sa_email,
                             "email": sa_email,
                             "platform": "GCP",
                             "description": description,
@@ -552,7 +618,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                         principal_node = Node(
                             id=sa_email,
                             kinds=kinds,
-                            properties=Properties(**{k: sanitize_property_value(v) for k, v in clean_properties.items()})
+                            properties=Properties(**sanitize_node_properties(clean_properties))
                         )
                         graph.add_node(principal_node)
                         for variation in normalize_variations(sa_email, discovered_project_names):
@@ -565,7 +631,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                         clean_properties = {
                             "name": group_email,
                             "displayname": group_email,
-                            "objectid": group_email,
                             "email": group_email,
                             "platform": "GCP",
                             "description": f"GCP Group: {group_email}",
@@ -575,7 +640,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                         principal_node = Node(
                             id=group_email,
                             kinds=["GCPGroup", "GCPResource"],
-                            properties=Properties(**{k: sanitize_property_value(v) for k, v in clean_properties.items()})
+                            properties=Properties(**sanitize_node_properties(clean_properties))
                         )
                         graph.add_node(principal_node)
                         for variation in normalize_variations(group_email, discovered_project_names):
@@ -588,7 +653,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                         clean_properties = {
                             "name": domain_id,
                             "displayname": domain_id,
-                            "objectid": domain_id,
                             "platform": "GCP",
                             "description": f"GCP Domain: {domain_id}",
                             "gcpResourceType": "Domain",
@@ -597,7 +661,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                         principal_node = Node(
                             id=domain_id,
                             kinds=["GCPPrincipal", "GCPResource"],
-                            properties=Properties(**{k: sanitize_property_value(v) for k, v in clean_properties.items()})
+                            properties=Properties(**sanitize_node_properties(clean_properties))
                         )
                         graph.add_node(principal_node)
                         for variation in normalize_variations(domain_id, discovered_project_names):
@@ -610,7 +674,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                         clean_properties = {
                             "name": principal_id,
                             "displayname": member,
-                            "objectid": principal_id,
                             "platform": "GCP",
                             "description": f"GCP Public Principal: {member}",
                             "gcpResourceType": "Public Principal",
@@ -619,7 +682,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                         principal_node = Node(
                             id=principal_id,
                             kinds=["GCPPrincipal", "GCPResource"],
-                            properties=Properties(**{k: sanitize_property_value(v) for k, v in clean_properties.items()})
+                            properties=Properties(**sanitize_node_properties(clean_properties))
                         )
                         graph.add_node(principal_node)
                         for variation in normalize_variations(principal_id, discovered_project_names):
@@ -639,7 +702,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         clean_properties = {
             "name": project_id,
             "displayname": project_name,
-            "objectid": project_id,
             "projectId": project_id,
             "platform": "GCP",
             "description": f"GCP Project: {project_name}",
@@ -662,7 +724,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "remediationPriority": "MEDIUM"
         }
         
-        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        sanitized_properties = sanitize_node_properties(clean_properties)
         
         # FIXED: Only 2 kinds maximum
         proj_node = Node(
@@ -687,7 +749,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         clean_properties = {
             "name": bucket_name,
             "displayname": bucket_name,
-            "objectid": bucket_name,
             "platform": "GCP",
             "project": bucket.get('project', 'Unknown'),
             "description": f"GCP Storage Bucket: {bucket_name}",
@@ -711,7 +772,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "remediationPriority": bucket.get('remediationPriority', 'Unknown')
         }
         
-        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        sanitized_properties = sanitize_node_properties(clean_properties)
         
         # FIXED: Only 2 kinds maximum
         bucket_node = Node(
@@ -739,7 +800,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         clean_properties = {
             "name": dataset_id,
             "displayname": dataset.get('friendly_name', dataset_id),
-            "objectid": canonical_dataset_id,
             "datasetId": dataset_id,
             "platform": "GCP",
             "project": project_id,
@@ -760,7 +820,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "remediationPriority": dataset.get('remediationPriority', 'Unknown')
         }
 
-        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        sanitized_properties = sanitize_node_properties(clean_properties)
             
         # Create node with canonical ID - FIXED: Only 2 kinds maximum
         bq_node = Node(
@@ -790,7 +850,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         clean_properties = {
             "name": sink.get('name', 'Unknown'),
             "displayname": sink.get('displayName', sink.get('name', 'Unknown')),
-            "objectid": sink_id,
             "platform": "GCP",
             "project": sink.get('project', 'Unknown'),
             "description": f"GCP {'Log Stream' if is_stream else 'Log Sink'}: {sink.get('name', 'Unknown')}",
@@ -817,7 +876,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "remediationPriority": sink.get('remediationPriority', 'Unknown')
         }
         
-        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        sanitized_properties = sanitize_node_properties(clean_properties)
         
         # Use GCPLogSink kind for UI compatibility - FIXED: Only 2 kinds maximum
         sink_node = Node(
@@ -842,7 +901,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         clean_properties = {
             "name": bucket.get('name', 'Unknown'),
             "displayname": bucket.get('displayName', bucket.get('name', 'Unknown')),
-            "objectid": bucket_id,
             "platform": "GCP",
             "project": bucket.get('project', 'Unknown'),
             "description": f"GCP Log Bucket: {bucket.get('name', 'Unknown')}",
@@ -863,7 +921,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "remediationPriority": bucket.get('remediationPriority', 'Unknown')
         }
         
-        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        sanitized_properties = sanitize_node_properties(clean_properties)
         
         # FIXED: Only 2 kinds maximum
         log_bucket_node = Node(
@@ -887,7 +945,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         clean_properties = {
             "name": metric.get('name', 'Unknown'),
             "displayname": metric.get('displayName', metric.get('name', 'Unknown')),
-            "objectid": metric_id,
             "platform": "GCP",
             "project": metric.get('project', 'Unknown'),
             "description": f"GCP Log Metric: {metric.get('name', 'Unknown')}",
@@ -907,7 +964,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "remediationPriority": metric.get('remediationPriority', 'Unknown')
         }
         
-        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        sanitized_properties = sanitize_node_properties(clean_properties)
         
         # FIXED: Only 2 kinds maximum
         metric_node = Node(
@@ -933,7 +990,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         clean_properties = {
             "name": folder_name,
             "displayname": folder.get('displayName', folder_name),
-            "objectid": folder_name,
             "platform": "GCP",
             "description": f"GCP Folder: {folder.get('displayName', folder_name)}",
             
@@ -948,7 +1004,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "remediationPriority": "Unknown"
         }
         
-        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        sanitized_properties = sanitize_node_properties(clean_properties)
         
         folder_node = Node(
             id=folder_name,
@@ -967,7 +1023,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                 parent_properties = {
                     "name": parent,
                     "displayname": parent,
-                    "objectid": parent,
                     "platform": "GCP",
                     "description": f"GCP Folder: {parent}",
                     "gcpResourceType": "Folder",
@@ -978,7 +1033,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                 parent_properties = {
                     "name": parent,
                     "displayname": parent,
-                    "objectid": parent,
                     "platform": "GCP",
                     "description": f"GCP Organization: {parent}",
                     "gcpResourceType": "Organization",
@@ -991,7 +1045,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             parent_node = Node(
                 id=parent,
                 kinds=parent_kinds,
-                properties=Properties(**{k: sanitize_property_value(v) for k, v in parent_properties.items()})
+                properties=Properties(**sanitize_node_properties(parent_properties))
             )
             graph.add_node(parent_node)
             
@@ -1013,7 +1067,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         clean_properties = {
             "name": instance_name,
             "displayname": instance_name,
-            "objectid": instance_id,
             "platform": "GCP",
             "description": f"GCP Compute Instance: {instance_name}",
             
@@ -1030,7 +1083,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "remediationPriority": "Unknown"
         }
         
-        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        sanitized_properties = sanitize_node_properties(clean_properties)
         
         instance_node = Node(
             id=instance_id,
@@ -1053,7 +1106,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         clean_properties = {
             "name": group_email,
             "displayname": group.get('name', group_email),
-            "objectid": group_email,
             "email": group_email,
             "platform": "GCP",
             "description": f"GCP Group: {group.get('name', group_email)}",
@@ -1062,7 +1114,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "riskLevel": group.get('riskLevel', 'Unknown')
         }
         
-        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        sanitized_properties = sanitize_node_properties(clean_properties)
         
         group_node = Node(
             id=group_email,
@@ -1092,7 +1144,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         clean_properties = {
             "name": secret_name,
             "displayname": secret_name,
-            "objectid": canonical_id,
             "platform": "GCP",
             "project": project_id or 'Unknown',
             "description": f"GCP Secret: {secret_name}",
@@ -1107,7 +1158,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "remediationPriority": "Unknown"
         }
         
-        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        sanitized_properties = sanitize_node_properties(clean_properties)
         
         secret_node = Node(
             id=canonical_id,
@@ -1138,7 +1189,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         clean_properties = {
             "name": current_user,
             "displayname": current_user,
-            "objectid": current_user,
             "email": current_user,
             "platform": "GCP",
             "description": f"Authenticated User: {current_user}",
@@ -1168,7 +1218,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "projectsAccessible": len(projects)
         }
         
-        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        sanitized_properties = sanitize_node_properties(clean_properties)
         
         # FIXED: Only 2 kinds maximum
         user_node = Node(
@@ -1414,9 +1464,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                 id=resolved_id,
                 kinds=kinds,
                 properties=Properties(
-                    objectid=resolved_id,
-                    platform="GCP",
-                    description=desc
+                    **sanitize_node_properties({
+                        "platform": "GCP",
+                        "description": desc,
+                    })
                 )
             ))
             for variation in normalize_variations(node_id, discovered_project_names):
@@ -1513,32 +1564,15 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         try:
             with open(output_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            #added this patch to see if label works or not
-            if 'graph' in data and 'nodes' in data['graph']:
-                for node in data['graph']['nodes']:
-                    # Add 'label' field = first item in 'kinds' array
-                    if 'kinds' in node and len(node['kinds']) > 0:
-                        node['label'] = node['kinds'][0]
+            # BloodHound CE OpenGraph: drop reserved properties.objectid,
+            # remove non-schema top-level fields (e.g. label), and rewrite
+            # colon-containing ids which CE does not fully support.
+            data = apply_opengraph_compliance(data)
 
-            # Fix edges to have proper match_by format
-            if 'graph' in data and 'edges' in data['graph']:
-                for edge in data['graph']['edges']:
-                    if 'start' in edge and isinstance(edge['start'], dict):
-                        edge['start']['match_by'] = 'id'
-                    if 'end' in edge and isinstance(edge['end'], dict):
-                        edge['end']['match_by'] = 'id'
-                    
-                    # Final conversion of any remaining array properties to strings in edge properties
-                    if 'properties' in edge:
-                        for prop_key, prop_value in edge['properties'].items():
-                            if isinstance(prop_value, list):
-                                edge['properties'][prop_key] = ", ".join([str(v) for v in prop_value]) if prop_value else "None"
-            
-            # Re-save with proper formatting and schema compliance
             with open(output_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-            
-            print(f"[DEBUG] ✅ Clean export completed - no source_kind metadata")
+
+            print(f"[DEBUG] ✅ Clean export completed - OpenGraph CE compliance applied")
             
         except Exception as e:
             print(f"[DEBUG] ⚠️ Export warning: {e}")
