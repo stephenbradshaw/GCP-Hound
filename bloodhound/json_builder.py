@@ -443,7 +443,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
     
     return edges
 
-def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None, instances=None, wi_pools=None):
+def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None, instances=None, wi_pools=None, api_keys=None):
     """Export comprehensive GCP data to BloodHound JSON format using ONLY real enumerated data"""
     graph = OpenGraph()  # NO source_kind parameter
     
@@ -458,6 +458,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     folders = folders or []
     instances = instances or []
     wi_pools = wi_pools or []
+    api_keys = api_keys or []
 
     if folders:
         print(f"[DEBUG] Including {len(folders)} folders")
@@ -1273,6 +1274,45 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                     'riskLevel': 'MEDIUM' if provider_state == 'ACTIVE' else 'LOW',
                     'description': f"Workload identity pool contains provider "
                                    f"{provider.get('displayName', provider_name)}"
+                }
+            })
+
+    # API keys: exfiltratable project-scoped credentials. Exported as
+    # inventory nodes attached to the project via GCP_Contains.
+    for api_key in api_keys:
+        key_name = (api_key.get('name', '') or '').lower()
+        project_id = (api_key.get('project', '') or '').lower()
+        if not key_name:
+            continue
+        unrestricted = api_key.get('unrestricted', False)
+        key_properties = {
+            "name": key_name,
+            "displayname": api_key.get('displayName', api_key.get('keyId', key_name)),
+            "platform": "GCP",
+            "description": f"GCP API Key: {api_key.get('displayName', api_key.get('keyId', key_name))}",
+            "gcpResourceType": "API Key",
+            "keyId": api_key.get('keyId', ''),
+            "restrictions": api_key.get('restrictions', 'none'),
+            "unrestricted": unrestricted,
+            "riskLevel": "HIGH" if unrestricted else "MEDIUM",
+        }
+        if key_name not in graph.nodes:
+            graph.add_node(Node(
+                id=key_name,
+                kinds=["GCP_ApiKey", "GCP_Resource"],
+                properties=Properties(**sanitize_node_properties(key_properties)),
+            ))
+        if project_id:
+            edges.append({
+                'start': {'value': project_id},
+                'end': {'value': key_name},
+                'kind': 'Contains',
+                'properties': {
+                    'source': 'api_key_enumeration',
+                    'riskLevel': 'HIGH' if unrestricted else 'MEDIUM',
+                    'description': f"Project {project_id} contains API key "
+                                   f"{api_key.get('displayName', api_key.get('keyId', ''))}"
+                                   + (" without API/referrer restrictions" if unrestricted else "")
                 }
             })
 

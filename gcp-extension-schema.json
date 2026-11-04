@@ -221,6 +221,14 @@
       "is_display_kind": true,
       "icon": "random",
       "color": "#F48FB1"
+    },
+    {
+      "name": "GCP_ApiKey",
+      "display_name": "GCP API Key",
+      "description": "GCP-Hound node kind GCP_ApiKey",
+      "is_display_kind": true,
+      "icon": "id-card",
+      "color": "#FFC107"
     }
   ],
   "relationship_kinds": [

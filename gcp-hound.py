@@ -22,6 +22,7 @@ from collectors.iam_collector import collect_iam, analyze_cross_project_permissi
 from collectors.user_collector import collect_users
 from collectors.org_collector import collect_orgs, merge_orgs_from_folders
 from collectors.workload_identity_collector import collect_workload_identity
+from collectors.apikeys_collector import collect_api_keys
 from collectors import role_resolver
 from collectors.folder_collector import collect_folders, build_folder_edges
 from collectors.logging_collector import collect_logging_resources, analyze_logging_access_privileges, build_logging_edges
@@ -381,6 +382,15 @@ For more authentication details: https://cloud.google.com/docs/authentication
             wi_pools = collect_workload_identity(creds, projects, args)
         except Exception as e:
             handle_api_error(e, "Workload identity enumeration", args)
+            wi_pools = []
+
+        # API keys (exfiltratable project-scoped credentials)
+        api_keys = []
+        try:
+            api_keys = collect_api_keys(creds, projects, args)
+        except Exception as e:
+            handle_api_error(e, "API key enumeration", args)
+            api_keys = []
 
         # Phase 3B: IAM collection (projects + orgs + folders)
         if args.verbose:
@@ -612,7 +622,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
             os.makedirs(args.output)
         
         try:
-            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets, folders=folders, instances=instances, wi_pools=wi_pools)
+            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets, folders=folders, instances=instances, wi_pools=wi_pools, api_keys=api_keys)
         except Exception as e:
             handle_api_error(e, "BloodHound export", args)
             output_file = None

@@ -369,6 +369,19 @@
         "displayname",
         "platform"
       ]
+    },
+    "GCP_ApiKey": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "id-card",
+        "color": "#FFC107"
+      },
+      "display_property": "displayname",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "platform"
+      ]
     }
   }
 }
