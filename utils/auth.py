@@ -47,12 +47,21 @@ def credentials_with_quota(creds, project_id):
 
 def credentials_for_project(creds, project_id):
     """
-    Prefer the *target* project as quota project so IAM/Service Usage/etc.
-    only need to be enabled on that project—not on a central ADC quota project.
+    Quota project selection for project-scoped calls.
+
+    When GCPHOUND_QUOTA_PROJECT (or ADC's fallback) is set, use it for ALL
+    calls: requiring serviceusage.services.use on every *target* project
+    breaks least-privilege auditors (USER_PROJECT_DENIED on each project).
+    Only when no central quota project is configured do we fall back to
+    target-as-quota, which suits org admins who already have services.use
+    everywhere via owner/editor inheritance.
     """
+    fallback = get_quota_fallback(creds)
+    if fallback:
+        return credentials_with_quota(creds, fallback)
     if project_id:
         return credentials_with_quota(creds, project_id)
-    return credentials_for_bootstrap(creds)
+    return creds
 
 
 def credentials_for_bootstrap(creds):
