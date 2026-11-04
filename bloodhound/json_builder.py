@@ -60,18 +60,28 @@ def extract_project_from_iam_policy(iam_policy):
     return iam_policy.get('projectId', '')
 
 def get_user_roles_from_iam(user_email, iam_policy):
-    """Get roles assigned to a specific user"""
+    """Get roles assigned to a specific user
+
+    Conditional bindings are excluded so role-derived semantics only reflect
+    unconditional grants (the roles list is descriptive only).
+    """
     user_identifier = f"user:{user_email}"
     roles = []
     
     for binding in iam_policy.get('bindings', []):
         if user_identifier in binding.get('members', []):
+            if binding.get('condition', {}).get('expression'):
+                continue
             roles.append(binding.get('role', ''))
     
     return roles
 
 def get_sa_roles_from_iam(sa_email, iam_data):
-    """Extract actual roles assigned to service account from IAM data"""
+    """Extract actual roles assigned to service account from IAM data
+
+    Conditional bindings are excluded: a role gated by an IAM condition does
+    not imply unconditional privilege.
+    """
     sa_roles = []
     
     if not iam_data:
@@ -83,6 +93,8 @@ def get_sa_roles_from_iam(sa_email, iam_data):
         bindings = iam_policy.get('bindings', [])
         
         for binding in bindings:
+            if binding.get('condition', {}).get('expression'):
+                continue
             members = binding.get('members', [])
             role = binding.get('role', '')
             

@@ -94,6 +94,10 @@ def assess_secret_access_privileges(secret_info, iam_data):
         for binding in iam_policy.get('bindings', []):
             role = binding.get('role', '')
             members = binding.get('members', [])
+
+            # Conditional grants do not imply unconditional secret access
+            if binding.get('condition', {}).get('expression'):
+                continue
             
             for member in members:
                 # Check for secret read permissions

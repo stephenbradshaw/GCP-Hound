@@ -1,6 +1,28 @@
 #!/usr/bin/env python3
 from utils.id_utils import normalize_dataset_id
 
+def binding_condition(binding):
+    """Return the IAM condition dict for a binding, or None when unconditional."""
+    condition = binding.get('condition') or {}
+    expression = condition.get('expression') or ''
+    if not expression:
+        return None
+    return {
+        "title": condition.get('title') or '',
+        "expression": expression,
+    }
+
+def condition_properties(binding):
+    """Edge properties describing an IAM condition (empty when unconditional)."""
+    condition = binding_condition(binding)
+    if not condition:
+        return {}
+    return {
+        "hasCondition": True,
+        "conditionTitle": condition["title"],
+        "conditionExpression": condition["expression"],
+    }
+
 def safe_add_edge(edges, start_id, end_id, kind, properties):
     """
     Safely add an edge to edges list with validation of node IDs
@@ -80,6 +102,7 @@ def build_service_account_permission_edges(service_account_permissions, debug=Fa
     edges = []
     edges_created = 0
     edges_skipped = 0
+    conditioned_skipped = 0
     
     if not service_account_permissions:
         if debug:
@@ -97,6 +120,12 @@ def build_service_account_permission_edges(service_account_permissions, debug=Fa
         for binding in bindings:
             role = binding.get('role', '')
             members = binding.get('members', [])
+
+            # Conditional grants must not create unconditional attack edges
+            condition = binding_condition(binding)
+            if condition:
+                conditioned_skipped += 1
+                continue
             
             for member in members:
                 if member.startswith('user:'):
@@ -158,6 +187,9 @@ def build_service_account_permission_edges(service_account_permissions, debug=Fa
     print(f"[+] Built {edges_created} service account permission edges")
     if edges_skipped > 0:
         print(f"[WARNING] Skipped {edges_skipped} invalid service account permission edges")
+    if conditioned_skipped > 0:
+        print(f"[~] Skipped {conditioned_skipped} conditional binding(s) on service accounts "
+              f"(conditioned grants are not unconditional attack paths)")
     
     return edges
 
@@ -199,7 +231,12 @@ def determine_sa_permission_edge_type(role):
 # All your existing functions remain unchanged below...
 
 def get_sa_roles_from_iam(sa_email, iam_data):
-    """Extract actual roles assigned to service account from IAM data"""
+    """Extract actual roles assigned to service account from IAM data.
+
+    Conditional bindings are excluded: a role gated by an IAM condition does
+    not imply unconditional privilege, so it must not drive privilege
+    classification or attack-path edges.
+    """
     sa_roles = []
 
     if not iam_data:
@@ -211,6 +248,8 @@ def get_sa_roles_from_iam(sa_email, iam_data):
         bindings = iam_policy.get('bindings', [])
 
         for binding in bindings:
+            if binding_condition(binding):
+                continue
             members = binding.get('members', [])
             role = binding.get('role', '')
 
@@ -461,7 +500,17 @@ def build_iam_binding_edges(iam_data, projects, debug=False):
                     continue
 
                 edge_kind = determine_enhanced_edge_kind_from_role(role, resource_type)
+                condition = binding_condition(binding)
+                if condition:
+                    # A conditional grant is not unconditional ownership or
+                    # policy control; downgrade strong kinds to the generic
+                    # role-grant edge and flag the condition on the edge.
+                    edge_kind = f'HasRoleOn{resource_type.capitalize()}'
                 risk_level = determine_risk_level_from_role(role)
+
+                description = f"{member_type} {member_id} has {role} on {resource_type} {resource_name}"
+                if condition:
+                    description += f" (conditional: {condition['title'] or 'IAM condition'})"
 
                 properties = {
                     "source": "iam_policy_binding",
@@ -471,7 +520,8 @@ def build_iam_binding_edges(iam_data, projects, debug=False):
                     "resourceType": resource_type,
                     "resourceName": resource_name,
                     "attackSurface": get_attack_surface_for_role(role),
-                    "description": f"{member_type} {member_id} has {role} on {resource_type} {resource_name}"
+                    "description": description,
+                    **condition_properties(binding),
                 }
                 if resource_type == 'project':
                     properties["projectId"] = resource_name
@@ -690,6 +740,7 @@ def build_privilege_escalation_edges(iam_data, service_accounts, secrets=None, d
     edges = []
     edges_created = 0
     edges_skipped = 0
+    conditioned_skipped = 0
 
     # Map service accounts by project for target resolution
     sa_by_project = {}
@@ -732,6 +783,11 @@ def build_privilege_escalation_edges(iam_data, service_accounts, secrets=None, d
         for binding in bindings:
             role = binding.get('role', '')
             members = binding.get('members', [])
+
+            # Conditional grants must not create unconditional escalation edges
+            if binding_condition(binding):
+                conditioned_skipped += 1
+                continue
 
             # Get permissions for this role
             escalation_perms = get_enhanced_permissions_for_role(role)
@@ -830,6 +886,8 @@ def build_privilege_escalation_edges(iam_data, service_accounts, secrets=None, d
     print(f"[+] Built {edges_created} privilege escalation edges")
     if edges_skipped > 0:
         print(f"[WARNING] Skipped {edges_skipped} invalid privilege escalation edges")
+    if conditioned_skipped > 0:
+        print(f"[~] Skipped {conditioned_skipped} conditional binding(s) in escalation analysis")
     return edges
 
 # Additional helper functions for enhanced logging and debugging
