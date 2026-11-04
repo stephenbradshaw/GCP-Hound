@@ -1,0 +1,74 @@
+{
+  "queries": [
+    {
+      "query_key": "GCP_all_users",
+      "name": "GCP: All users",
+      "category": "Inventory",
+      "description": "List all GCP_User nodes.",
+      "query": "MATCH (u:GCP_User) RETURN u"
+    },
+    {
+      "query_key": "GCP_all_groups",
+      "name": "GCP: All groups",
+      "category": "Inventory",
+      "description": "List all GCP_Group nodes.",
+      "query": "MATCH (g:GCP_Group) RETURN g"
+    },
+    {
+      "query_key": "GCP_group_memberships",
+      "name": "GCP: Group memberships",
+      "category": "Identity",
+      "description": "Show users (and other principals) that are members of GCP groups via GCP_MemberOf.",
+      "query": "MATCH p = (m)-[:GCP_MemberOf]->(g:GCP_Group) RETURN p"
+    },
+    {
+      "query_key": "GCP_members_of_groups",
+      "name": "GCP: Members of each group",
+      "category": "Identity",
+      "description": "Group membership edges (BloodHound Explore shows paths; open the table pane for columns).",
+      "query": "MATCH p = (m)-[r:GCP_MemberOf]->(g:GCP_Group) RETURN p"
+    },
+    {
+      "query_key": "GCP_groups_for_users",
+      "name": "GCP: Groups each user belongs to",
+      "category": "Identity",
+      "description": "Inverse membership view: user → groups.",
+      "query": "MATCH p = (u:GCP_User)-[:GCP_MemberOf]->(g:GCP_Group) RETURN p"
+    },
+    {
+      "query_key": "GCP_org_role_grants",
+      "name": "GCP: Principals with org-level roles",
+      "category": "IAM",
+      "description": "Principals that have role edges onto organizations.",
+      "query": "MATCH p = (prin)-[:GCP_HasRoleOnOrganization|GCP_OwnsOrganization|GCP_MemberOfOrganization|GCP_CanModifyOrganizationPolicy]->(o:GCP_Organization) RETURN p"
+    },
+    {
+      "query_key": "GCP_folder_role_grants",
+      "name": "GCP: Principals with folder-level roles",
+      "category": "IAM",
+      "description": "Principals that have role edges onto folders.",
+      "query": "MATCH p = (prin)-[:GCP_HasRoleOnFolder|GCP_OwnsFolder|GCP_MemberOfFolder|GCP_CanModifyFolderPolicy]->(f:GCP_Folder) RETURN p"
+    },
+    {
+      "query_key": "GCP_group_to_iam",
+      "name": "GCP: Group membership into IAM grants",
+      "category": "Attack Paths",
+      "description": "Paths from users through group membership into any IAM/role edge on a resource.",
+      "query": "MATCH p = (u:GCP_User)-[:GCP_MemberOf]->(g:GCP_Group)-[r]->(t) WHERE type(r) <> 'GCP_MemberOf' RETURN p"
+    },
+    {
+      "query_key": "GCP_sa_key_control",
+      "name": "GCP: Who can create SA keys",
+      "category": "Attack Paths",
+      "description": "Principals with GCP_CanCreateKeys onto service accounts.",
+      "query": "MATCH p = (prin)-[:GCP_CanCreateKeys]->(sa:GCP_ServiceAccount) RETURN p"
+    },
+    {
+      "query_key": "GCP_sa_impersonation",
+      "name": "GCP: Who can impersonate SAs",
+      "category": "Attack Paths",
+      "description": "Principals with impersonation / token edges onto service accounts.",
+      "query": "MATCH p = (prin)-[:GCP_CanImpersonate|GCP_CanGetAccessToken]->(sa:GCP_ServiceAccount) RETURN p"
+    }
+  ]
+}
