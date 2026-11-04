@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from utils.id_utils import normalize_dataset_id
+from collectors import role_resolver
 
 def binding_condition(binding):
     """Return the IAM condition dict for a binding, or None when unconditional."""
@@ -269,11 +270,28 @@ def analyze_sa_actual_privileges(sa_email, iam_data):
     high_roles = ['roles/editor', 'roles/compute.admin', 'roles/storage.admin', 'roles/iam.serviceAccountAdmin']
     medium_roles = ['roles/compute.instanceAdmin', 'roles/storage.objectAdmin', 'roles/bigquery.dataEditor']
 
-    if any(role in critical_roles for role in sa_roles):
+    # Name-unmatched roles (typically custom roles) are classified by their
+    # actual includedPermissions when role definitions were collected.
+    unmatched = [r for r in sa_roles
+                 if r not in critical_roles + high_roles + medium_roles
+                 and 'viewer' not in r.lower()]
+    perm_class = None
+    for role in unmatched:
+        perms = role_resolver.permissions_for_role(role)
+        classified = role_resolver.classify_role_by_permissions(perms)
+        if classified == 'CRITICAL':
+            perm_class = 'CRITICAL'
+            break
+        if classified == 'HIGH' and perm_class != 'CRITICAL':
+            perm_class = 'HIGH'
+        elif classified == 'MEDIUM' and perm_class is None:
+            perm_class = 'MEDIUM'
+
+    if perm_class == 'CRITICAL' or any(role in critical_roles for role in sa_roles):
         return "CRITICAL"
-    elif any(role in high_roles for role in sa_roles):
+    elif perm_class == 'HIGH' or any(role in high_roles for role in sa_roles):
         return "HIGH"
-    elif any(role in medium_roles for role in sa_roles):
+    elif perm_class == 'MEDIUM' or any(role in medium_roles for role in sa_roles):
         return "MEDIUM"
     elif any('viewer' in role.lower() for role in sa_roles):
         return "LOW"
@@ -676,7 +694,16 @@ def get_enhanced_permissions_for_role(role):
         'roles/secretmanager.secretAccessor': ['secretmanager.versions.access'],# added for secrets enumeration
         'roles/secretmanager.admin': ['secretmanager.secrets.get', 'secretmanager.versions.access']# added for secrets enumeration
     }
-    return role_permissions.get(role, [])
+    if role in role_permissions:
+        return role_permissions[role]
+
+    # Custom roles (organizations/*/roles/*, projects/*/roles/*) and any
+    # predefined role not in the static map: use the actual includedPermissions
+    # from the IAM role definitions collected by the role resolver.
+    resolved = role_resolver.permissions_for_role(role)
+    if resolved:
+        return resolved
+    return []
 
 def get_escalation_risk_level(permission):
     critical_perms = [

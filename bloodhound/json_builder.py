@@ -257,7 +257,23 @@ def analyze_sa_actual_privileges_for_node(sa_email, iam_data):
     high_roles = ['roles/editor', 'roles/compute.admin', 'roles/storage.admin', 'roles/iam.serviceAccountAdmin']
     medium_roles = ['roles/compute.instanceAdmin', 'roles/storage.objectAdmin', 'roles/bigquery.dataEditor']
     
-    if any(role in critical_roles for role in sa_roles):
+    # Name-unmatched roles (typically custom roles) classified by permissions
+    from collectors import role_resolver
+    perm_class = None
+    for role in [r for r in sa_roles
+                 if r not in critical_roles + high_roles + medium_roles
+                 and 'viewer' not in r.lower()]:
+        classified = role_resolver.classify_role_by_permissions(
+            role_resolver.permissions_for_role(role))
+        if classified == 'CRITICAL':
+            perm_class = 'CRITICAL'
+            break
+        if classified == 'HIGH' and perm_class != 'CRITICAL':
+            perm_class = 'HIGH'
+        elif classified == 'MEDIUM' and perm_class is None:
+            perm_class = 'MEDIUM'
+
+    if perm_class == 'CRITICAL' or any(role in critical_roles for role in sa_roles):
         return {
             "privilegeLevel": "CRITICAL",
             "riskLevel": "CRITICAL",
@@ -266,7 +282,7 @@ def analyze_sa_actual_privileges_for_node(sa_email, iam_data):
             "escalationRisk": "CRITICAL",
             "remediationPriority": "CRITICAL"
         }
-    elif any(role in high_roles for role in sa_roles):
+    elif perm_class == 'HIGH' or any(role in high_roles for role in sa_roles):
         return {
             "privilegeLevel": "HIGH",
             "riskLevel": "HIGH", 
@@ -275,7 +291,7 @@ def analyze_sa_actual_privileges_for_node(sa_email, iam_data):
             "escalationRisk": "HIGH",
             "remediationPriority": "HIGH"
         }
-    elif any(role in medium_roles for role in sa_roles):
+    elif perm_class == 'MEDIUM' or any(role in medium_roles for role in sa_roles):
         return {
             "privilegeLevel": "MEDIUM",
             "riskLevel": "MEDIUM",

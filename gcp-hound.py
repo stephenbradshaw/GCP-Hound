@@ -21,6 +21,7 @@ from collectors.edge_builder import build_edges, build_service_account_permissio
 from collectors.iam_collector import collect_iam, analyze_cross_project_permissions, collect_service_account_permissions #added new functions from iam collector
 from collectors.user_collector import collect_users
 from collectors.org_collector import collect_orgs, merge_orgs_from_folders
+from collectors import role_resolver
 from collectors.folder_collector import collect_folders, build_folder_edges
 from collectors.logging_collector import collect_logging_resources, analyze_logging_access_privileges, build_logging_edges
 from bloodhound.json_builder import export_bloodhound_json
@@ -361,6 +362,13 @@ For more authentication details: https://cloud.google.com/docs/authentication
 
         # Folder parents still identify orgs when organizations.search is empty/broken
         orgs = merge_orgs_from_folders(orgs, folders)
+
+        # Role definitions (predefined + custom) so custom roles get real
+        # privilege semantics in edge building / escalation analysis
+        try:
+            role_resolver.collect_role_definitions(creds, orgs=orgs, projects=projects, args=args)
+        except Exception as e:
+            handle_api_error(e, "Role definition collection", args)
 
         # Phase 3B: IAM collection (projects + orgs + folders)
         if args.verbose:
