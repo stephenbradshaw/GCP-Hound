@@ -37,3 +37,42 @@ def collect_orgs(creds):
     except Exception as e:
         print(f"[!] Unable to list organizations: {e}")
         return []
+
+
+def merge_orgs_from_folders(orgs, folders):
+    """
+    Ensure org IAM can run even when organizations.search returns nothing.
+
+    Folder parents like organizations/123 still identify orgs we should
+    attempt getIamPolicy on (e.g. after a CRM search API mismatch).
+    """
+    merged = list(orgs or [])
+    seen = set()
+    for org in merged:
+        name = org.get("name") or ""
+        if name.startswith("organizations/"):
+            seen.add(name)
+        else:
+            oid = name or org.get("organizationId") or ""
+            if oid:
+                seen.add(oid if oid.startswith("organizations/") else f"organizations/{oid}")
+
+    added = 0
+    for folder in folders or []:
+        parent = folder.get("parent") or ""
+        if not parent.startswith("organizations/") or parent in seen:
+            continue
+        seen.add(parent)
+        merged.append({
+            "name": parent,
+            "displayName": folder.get("parentDisplayName") or parent,
+            "source": "folder_parent",
+        })
+        added += 1
+
+    if added:
+        print(f"[+] Added {added} organization(s) from folder parents for IAM collection")
+        for name in sorted(seen):
+            if any(o.get("source") == "folder_parent" and o.get("name") == name for o in merged):
+                print(f"    - {name} (from folder parent)")
+    return merged

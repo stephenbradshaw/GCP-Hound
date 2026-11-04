@@ -20,7 +20,7 @@ from collectors.privesc_analyzer import GCPPrivilegeEscalationAnalyzer, check_wo
 from collectors.edge_builder import build_edges, build_service_account_permission_edges #added new functions from edge builder
 from collectors.iam_collector import collect_iam, analyze_cross_project_permissions, collect_service_account_permissions #added new functions from iam collector
 from collectors.user_collector import collect_users
-from collectors.org_collector import collect_orgs
+from collectors.org_collector import collect_orgs, merge_orgs_from_folders
 from collectors.folder_collector import collect_folders, build_folder_edges
 from collectors.logging_collector import collect_logging_resources, analyze_logging_access_privileges, build_logging_edges
 from bloodhound.json_builder import export_bloodhound_json
@@ -358,6 +358,9 @@ For more authentication details: https://cloud.google.com/docs/authentication
         except Exception as e:
             handle_api_error(e, "Folder enumeration", args)
             folders, folder_hierarchy = [], {}
+
+        # Folder parents still identify orgs when organizations.search is empty/broken
+        orgs = merge_orgs_from_folders(orgs, folders)
 
         # Phase 3B: IAM collection (projects + orgs + folders)
         if args.verbose:
