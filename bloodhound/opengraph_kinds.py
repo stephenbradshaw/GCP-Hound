@@ -100,6 +100,15 @@ EDGE_KIND_MAP = {
     "CanViewSensitiveLogs": "GCP_CanViewSensitiveLogs",
     "CanAccessLogStream": "GCP_CanAccessLogStream",
     "CanWriteToLogSink": "GCP_CanWriteToLogSink",
+    # Project-level role-derived kinds (determine_enhanced_edge_kind_from_role)
+    "AdministerProject": "GCP_AdministerProject",
+    "ManageProjectIAM": "GCP_ManageProjectIAM",
+    "CanEditProject": "GCP_CanEditProject",
+    "CanViewProject": "GCP_CanViewProject",
+    "ManageProjectCompute": "GCP_ManageProjectCompute",
+    "ManageProjectStorage": "GCP_ManageProjectStorage",
+    "ManageProjectBigQuery": "GCP_ManageProjectBigQuery",
+    "CanChangeInstanceServiceAccount": "GCP_CanChangeInstanceServiceAccount",
 }
 
 # Edges that represent control-taking for pathfinding.
@@ -131,6 +140,14 @@ TRAVERSABLE_EDGE_KINDS = {
     "GCP_HighPrivilegeServiceAccount",
     "GCP_OwnsOrganization",
     "GCP_OwnsFolder",
+    # Project-level role-derived control edges
+    "GCP_AdministerProject",
+    "GCP_ManageProjectIAM",
+    "GCP_CanEditProject",
+    "GCP_ManageProjectCompute",
+    "GCP_ManageProjectStorage",
+    "GCP_ManageProjectBigQuery",
+    "GCP_CanChangeInstanceServiceAccount",
     # Identity / role reachability (AD MemberOf equivalent + IAM grants)
     "GCP_MemberOf",
     "GCP_MemberOfProject",

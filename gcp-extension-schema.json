@@ -791,6 +791,73 @@
       "name": "GCP_UsesServiceAccount",
       "description": "GCP-Hound relationship UsesServiceAccount",
       "is_traversable": false
+    },
+    {
+      "name": "GCP_AdministerProject",
+      "description": "GCP-Hound relationship AdministerProject",
+      "edge_knowledge": [
+        {
+          "content": "This `AdministerProject` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+        }
+      ]
+    },
+    {
+      "name": "GCP_ManageProjectIAM",
+      "description": "GCP-Hound relationship ManageProjectIAM",
+      "edge_knowledge": [
+        {
+          "content": "This `ManageProjectIAM` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+        }
+      ]
+    },
+    {
+      "name": "GCP_CanEditProject",
+      "description": "GCP-Hound relationship CanEditProject",
+      "edge_knowledge": [
+        {
+          "content": "This `CanEditProject` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+        }
+      ]
+    },
+    {
+      "name": "GCP_CanViewProject",
+      "description": "GCP-Hound relationship CanViewProject"
+    },
+    {
+      "name": "GCP_ManageProjectCompute",
+      "description": "GCP-Hound relationship ManageProjectCompute",
+      "edge_knowledge": [
+        {
+          "content": "This `ManageProjectCompute` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+        }
+      ]
+    },
+    {
+      "name": "GCP_ManageProjectStorage",
+      "description": "GCP-Hound relationship ManageProjectStorage",
+      "edge_knowledge": [
+        {
+          "content": "This `ManageProjectStorage` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+        }
+      ]
+    },
+    {
+      "name": "GCP_ManageProjectBigQuery",
+      "description": "GCP-Hound relationship ManageProjectBigQuery",
+      "edge_knowledge": [
+        {
+          "content": "This `ManageProjectBigQuery` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+        }
+      ]
+    },
+    {
+      "name": "GCP_CanChangeInstanceServiceAccount",
+      "description": "GCP-Hound relationship CanChangeInstanceServiceAccount",
+      "edge_knowledge": [
+        {
+          "content": "This `CanChangeInstanceServiceAccount` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+        }
+      ]
     }
   ],
   "environments": [

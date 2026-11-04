@@ -85,7 +85,10 @@ def collect_iam_policies_cai(creds, orgs=None, folders=None, projects=None, args
             url = _CAI_SEARCH_URL.format(scope=scope)
             params = {"pageSize": "1000"}
             while True:
-                response = session.post(url, params=params, json={})
+                # The REST binding is a GET (asset_service.proto:
+                # get: "/v1/{scope=*/*}:searchAllIamPolicies"); POST returns
+                # a generic front-end 404.
+                response = session.get(url, params=params)
                 if response.status_code == 403:
                     print(f"[!] CAI searchAllIamPolicies denied on {scope} "
                           f"(needs cloudasset.assets.searchAllIamPolicies / roles/cloudasset.viewer); "
