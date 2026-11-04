@@ -254,6 +254,20 @@ python3 gcp-hound.py -i service@project.iam.gserviceaccount.com
 python3 gcp-hound.py -q
 ```
 
+### Cloud Asset Inventory bulk IAM collection (optional)
+
+```
+python3 gcp-hound.py --use-cai
+```
+
+Collects all org/folder/project IAM policies with one paginated
+`searchAllIamPolicies` call per scope instead of per-resource
+`getIamPolicy` calls. Requires `roles/cloudasset.viewer`
+(`cloudasset.assets.searchAllIamPolicies`), which is **not** included in
+`roles/iam.securityAuditor`. When the permission is missing GCP-Hound
+automatically falls back to the standard getIamPolicy flow.
+
+
 ### **4. Import to BloodHound**
 - Generated file: `./output/gcp-bhopengraph.json`
 - Upload via BloodHound UI file import

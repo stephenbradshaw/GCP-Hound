@@ -167,7 +167,11 @@ For more authentication details: https://cloud.google.com/docs/authentication
                        help='Output directory for results (default: ./output)')
     parser.add_argument('-q', '--quiet', action='store_true',
                        help='Suppress banner and minimize output')
-    
+    parser.add_argument('--use-cai', action='store_true',
+                       help='Collect IAM policies via Cloud Asset Inventory '
+                            'searchAllIamPolicies (needs roles/cloudasset.viewer; '
+                            'falls back to getIamPolicy flow when denied)')
+
     args = parser.parse_args()
 
     # Setup logging with proper cleanup

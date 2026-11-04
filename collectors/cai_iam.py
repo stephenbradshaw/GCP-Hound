@@ -1,0 +1,167 @@
+"""
+Cloud Asset Inventory (CAI) based IAM collection for GCP-Hound.
+
+Opt-in (--use-cai): replaces the per-resource getIamPolicy walk with a single
+paginated searchAllIamPolicies call per scope (org > folder > project). One
+call returns every IAM policy below the scope, including conditional
+bindings, with far fewer API round-trips.
+
+Requires cloudasset.assets.searchAllIamPolicies, included in
+roles/cloudasset.viewer (not in roles/iam.securityAuditor). On permission
+failure the caller should fall back to the standard getIamPolicy flow.
+
+v1 scope: organization / folder / project policies. Resource-level policies
+(buckets, secrets, SAs, ...) are counted and reported but not transformed.
+"""
+
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from utils.auth import credentials_for_bootstrap
+
+_CRM_PREFIX = "//cloudresourcemanager.googleapis.com/"
+
+
+def _resolve_scopes(orgs=None, folders=None, projects=None):
+    """Build the list of CAI scopes to query.
+
+    An organization scope covers everything below it, so one scope suffices.
+    Without an org, use each top-level folder (org-parented); without those,
+    one scope per project.
+    """
+    for org in orgs or []:
+        name = org.get("name") or ""
+        if name.startswith("organizations/"):
+            return [name]
+
+    folder_scopes = []
+    for folder in folders or []:
+        parent = folder.get("parent") or ""
+        name = folder.get("name") or ""
+        if parent.startswith("organizations/") and name:
+            folder_scopes.append(name)
+    if folder_scopes:
+        return sorted(set(folder_scopes))
+
+    project_ids = sorted({(p.get("projectId") or "").lower() for p in projects or []} - {""})
+    return [f"projects/{pid}" for pid in project_ids]
+
+
+def collect_iam_policies_cai(creds, orgs=None, folders=None, projects=None, args=None):
+    """Collect IAM policies via CAI searchAllIamPolicies.
+
+    Queries one scope per unresolved hierarchy root (a single org scope
+    covers the whole tree; otherwise top-level folders, else projects).
+
+    Returns the iam_data list, or None when CAI could not be used at all
+    (build failure or permission denied) so the caller can fall back to the
+    getIamPolicy flow. Entries match the getIamPolicy-based collector format.
+    """
+    iam_data = []
+    skipped_resource_policies = 0
+
+    scopes = _resolve_scopes(orgs, folders, projects)
+    if not scopes:
+        if args and args.verbose:
+            print("[!] CAI: no scope available (no orgs/folders/projects)")
+        return None
+
+    try:
+        cai = build("cloudasset", "v1", credentials=credentials_for_bootstrap(creds))
+    except Exception as e:
+        if args and args.debug:
+            print(f"[DEBUG] CAI service build failed: {e}")
+        print(f"[!] CAI IAM collection unavailable ({e}); falling back to getIamPolicy flow")
+        return None
+
+    if args and args.verbose:
+        print(f"[*] CAI: searching IAM policies under {len(scopes)} scope(s)")
+
+    for scope in scopes:
+        try:
+            request = cai.iamPolicies().searchAll(scope=scope, pageSize=1000)
+            while request is not None:
+                response = request.execute()
+                for result in response.get("results", []):
+                    policy = _transform_cai_result(result)
+                    if policy:
+                        iam_data.append(policy)
+                    elif result.get("resource"):
+                        skipped_resource_policies += 1
+                request = cai.iamPolicies().searchAll_next(request, response)
+        except HttpError as e:
+            if e.resp is not None and e.resp.status == 403:
+                print(f"[!] CAI searchAllIamPolicies denied on {scope} "
+                      f"(needs cloudasset.assets.searchAllIamPolicies / roles/cloudasset.viewer); "
+                      f"falling back to getIamPolicy flow")
+            else:
+                print(f"[!] CAI searchAllIamPolicies failed on {scope}: {e}; "
+                      f"falling back to getIamPolicy flow")
+            return None
+        except Exception as e:
+            print(f"[!] CAI searchAllIamPolicies error on {scope}: {e}; "
+                  f"falling back to getIamPolicy flow")
+            return None
+
+    by_type = {}
+    for policy in iam_data:
+        rtype = policy.get("resourceType", "unknown")
+        by_type[rtype] = by_type.get(rtype, 0) + 1
+    summary = ", ".join(f"{count} {rtype}" for rtype, count in sorted(by_type.items()))
+    print(f"[+] CAI: collected {len(iam_data)} IAM policies ({summary or 'none'})")
+    if skipped_resource_policies:
+        print(f"[~] CAI: {skipped_resource_policies} resource-level policy(ies) skipped "
+              f"(v1 collects org/folder/project only)")
+
+    return iam_data
+
+
+def _transform_cai_result(result):
+    """Convert a CAI searchAllIamPolicies result to the iam_data dict format.
+
+    Returns None for resources outside the resource-manager hierarchy.
+    """
+    resource = result.get("resource") or ""
+    iam_policy = result.get("iamPolicy") or {}
+    bindings = iam_policy.get("bindings", [])
+    if not bindings:
+        return None
+
+    if not resource.startswith(_CRM_PREFIX):
+        return None
+
+    path = resource[len(_CRM_PREFIX):]
+    parts = path.split("/")
+
+    if len(parts) >= 2 and parts[0] == "projects":
+        project_id = parts[1]
+        return {
+            "resourceType": "project",
+            "resourceName": f"projects/{project_id}",
+            "projectId": project_id,
+            "projectName": project_id,
+            "bindings": bindings,
+            "bindingCount": len(bindings),
+            "source": "cai_search_all",
+        }
+    if len(parts) >= 2 and parts[0] == "folders":
+        folder_id = parts[1]
+        return {
+            "resourceType": "folder",
+            "resourceName": f"folders/{folder_id}",
+            "folderId": folder_id,
+            "bindings": bindings,
+            "bindingCount": len(bindings),
+            "source": "cai_search_all",
+        }
+    if len(parts) >= 2 and parts[0] == "organizations":
+        org_id = parts[1]
+        return {
+            "resourceType": "organization",
+            "resourceName": f"organizations/{org_id}",
+            "organizationId": org_id,
+            "organizationName": org_id,
+            "bindings": bindings,
+            "bindingCount": len(bindings),
+            "source": "cai_search_all",
+        }
+    return None

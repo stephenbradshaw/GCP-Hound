@@ -14,6 +14,26 @@ def collect_iam(creds, projects, args=None, orgs=None, folders=None):
             print("[DEBUG] No credentials provided to IAM collector")
         return iam_data
 
+    # Opt-in Cloud Asset Inventory bulk collection (--use-cai). One
+    # searchAllIamPolicies per scope replaces the per-resource getIamPolicy
+    # walk; falls back automatically when the permission is missing.
+    if args and getattr(args, "use_cai", False):
+        from collectors.cai_iam import collect_iam_policies_cai
+        cai_data = collect_iam_policies_cai(
+            creds, orgs=orgs, folders=folders, projects=projects, args=args)
+        if cai_data is not None:
+            iam_data.extend(cai_data)
+            if args and args.verbose:
+                by_type = {}
+                for policy in iam_data:
+                    rtype = policy.get("resourceType", "unknown")
+                    by_type[rtype] = by_type.get(rtype, 0) + 1
+                summary = ", ".join(f"{count} {rtype}" for rtype, count in sorted(by_type.items()))
+                print(f"[+] IAM Collector: Completed analysis of {len(iam_data)} policies "
+                      f"({summary or 'none'}) via Cloud Asset Inventory")
+            return iam_data
+        # CAI unavailable/denied: continue with the standard flow below
+
     if projects:
         iam_data.extend(_collect_project_iam(creds, projects, args))
     elif args and args.debug:
