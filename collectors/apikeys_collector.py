@@ -82,6 +82,8 @@ def collect_api_keys(creds, projects, args=None):
         unrestricted_count = sum(1 for k in keys_out if k['unrestricted'])
         print(f"[+] API keys: {len(keys_out)} key(s) "
               f"({unrestricted_count} without API/referrer restrictions)")
+    elif not denied_reported:
+        print("[~] API keys: none found in enumerated projects")
 
     return keys_out
 
