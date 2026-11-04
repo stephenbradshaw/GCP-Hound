@@ -343,6 +343,32 @@
         "displayname",
         "platform"
       ]
+    },
+    "GCP_WorkloadIdentityPool": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "random",
+        "color": "#E91E63"
+      },
+      "display_property": "displayname",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "platform"
+      ]
+    },
+    "GCP_WorkloadIdentityProvider": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "random",
+        "color": "#F48FB1"
+      },
+      "display_property": "displayname",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "platform"
+      ]
     }
   }
 }

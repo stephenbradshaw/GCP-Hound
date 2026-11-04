@@ -21,6 +21,7 @@ from collectors.edge_builder import build_edges, build_service_account_permissio
 from collectors.iam_collector import collect_iam, analyze_cross_project_permissions, collect_service_account_permissions #added new functions from iam collector
 from collectors.user_collector import collect_users
 from collectors.org_collector import collect_orgs, merge_orgs_from_folders
+from collectors.workload_identity_collector import collect_workload_identity
 from collectors import role_resolver
 from collectors.folder_collector import collect_folders, build_folder_edges
 from collectors.logging_collector import collect_logging_resources, analyze_logging_access_privileges, build_logging_edges
@@ -374,6 +375,13 @@ For more authentication details: https://cloud.google.com/docs/authentication
         except Exception as e:
             handle_api_error(e, "Role definition collection", args)
 
+        # Workload identity federation (pools + providers)
+        wi_pools = []
+        try:
+            wi_pools = collect_workload_identity(creds, projects, args)
+        except Exception as e:
+            handle_api_error(e, "Workload identity enumeration", args)
+
         # Phase 3B: IAM collection (projects + orgs + folders)
         if args.verbose:
             print(f"\n[*] Phase 3B: IAM Policy Enumeration")
@@ -604,7 +612,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
             os.makedirs(args.output)
         
         try:
-            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets, folders=folders, instances=instances)
+            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets, folders=folders, instances=instances, wi_pools=wi_pools)
         except Exception as e:
             handle_api_error(e, "BloodHound export", args)
             output_file = None

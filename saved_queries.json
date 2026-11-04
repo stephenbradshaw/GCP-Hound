@@ -69,6 +69,13 @@
       "category": "Attack Paths",
       "description": "Principals with impersonation / token edges onto service accounts.",
       "query": "MATCH p = (prin)-[:GCP_CanImpersonate|GCP_CanGetAccessToken]->(sa:GCP_ServiceAccount) RETURN p"
+    },
+    {
+      "query_key": "GCP_workload_identity",
+      "name": "GCP: Workload Identity federation",
+      "category": "Attack Paths",
+      "description": "Workload identity pools and providers per project (federation = external identity to SA impersonation surface).",
+      "query": "MATCH p = (prj:GCP_Project)-[:GCP_Contains]->(pool:GCP_WorkloadIdentityPool)-[:GCP_Contains]->(prov:GCP_WorkloadIdentityProvider) RETURN p"
     }
   ]
 }

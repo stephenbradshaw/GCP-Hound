@@ -443,7 +443,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
     
     return edges
 
-def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None, instances=None):
+def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None, instances=None, wi_pools=None):
     """Export comprehensive GCP data to BloodHound JSON format using ONLY real enumerated data"""
     graph = OpenGraph()  # NO source_kind parameter
     
@@ -457,6 +457,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     bigquery_datasets = bigquery_datasets or []
     folders = folders or []
     instances = instances or []
+    wi_pools = wi_pools or []
 
     if folders:
         print(f"[DEBUG] Including {len(folders)} folders")
@@ -1201,6 +1202,79 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         for variation in normalize_variations(group_email, discovered_project_names):
             node_id_map[variation] = group_email
+
+    # Workload Identity Federation pools + providers. External identities
+    # federating through a provider can be granted SA impersonation, so the
+    # federation surface is exported as inventory nodes attached to the
+    # project (GCP_Contains edges).
+    for pool in wi_pools:
+        pool_name = (pool.get('name', '') or '').lower()
+        project_id = (pool.get('project', '') or '').lower()
+        if not pool_name:
+            continue
+        state = pool.get('state', '')
+        pool_properties = {
+            "name": pool_name,
+            "displayname": pool.get('displayName', pool_name),
+            "platform": "GCP",
+            "description": f"GCP Workload Identity Pool: {pool.get('displayName', pool_name)}",
+            "gcpResourceType": "Workload Identity Pool",
+            "poolId": pool.get('poolId', ''),
+            "state": state,
+            "providerCount": len(pool.get('providers', [])),
+            "project": project_id,
+            "riskLevel": "HIGH" if state == 'ACTIVE' else "LOW",
+        }
+        if pool_name not in graph.nodes:
+            graph.add_node(Node(
+                id=pool_name,
+                kinds=["GCP_WorkloadIdentityPool", "GCP_Resource"],
+                properties=Properties(**sanitize_node_properties(pool_properties)),
+            ))
+        if project_id:
+            edges.append({
+                'start': {'value': project_id},
+                'end': {'value': pool_name},
+                'kind': 'Contains',
+                'properties': {
+                    'source': 'workload_identity_enumeration',
+                    'riskLevel': 'MEDIUM' if state == 'ACTIVE' else 'LOW',
+                    'description': f"Project {project_id} contains workload identity pool "
+                                   f"{pool.get('displayName', pool_name)}"
+                }
+            })
+
+        for provider in pool.get('providers', []):
+            provider_name = (provider.get('name', '') or '').lower()
+            if not provider_name or provider_name in graph.nodes:
+                continue
+            provider_state = provider.get('state', '')
+            provider_properties = {
+                "name": provider_name,
+                "displayname": provider.get('displayName', provider_name),
+                "platform": "GCP",
+                "description": f"GCP Workload Identity Provider: {provider.get('displayName', provider_name)}",
+                "gcpResourceType": "Workload Identity Provider",
+                "providerId": provider.get('providerId', ''),
+                "state": provider_state,
+                "riskLevel": "HIGH" if provider_state == 'ACTIVE' else "LOW",
+            }
+            graph.add_node(Node(
+                id=provider_name,
+                kinds=["GCP_WorkloadIdentityProvider", "GCP_Resource"],
+                properties=Properties(**sanitize_node_properties(provider_properties)),
+            ))
+            edges.append({
+                'start': {'value': pool_name},
+                'end': {'value': provider_name},
+                'kind': 'Contains',
+                'properties': {
+                    'source': 'workload_identity_enumeration',
+                    'riskLevel': 'MEDIUM' if provider_state == 'ACTIVE' else 'LOW',
+                    'description': f"Workload identity pool contains provider "
+                                   f"{provider.get('displayName', provider_name)}"
+                }
+            })
 
     # Add secret nodes using ONLY real enumerated data (secrets were
     # collected but never exported as nodes). Edge builders reference

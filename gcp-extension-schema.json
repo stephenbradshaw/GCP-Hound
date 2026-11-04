@@ -205,6 +205,22 @@
       "is_display_kind": true,
       "icon": "user",
       "color": "#FF9800"
+    },
+    {
+      "name": "GCP_WorkloadIdentityPool",
+      "display_name": "GCP Workload Identity Pool",
+      "description": "GCP-Hound node kind GCP_WorkloadIdentityPool",
+      "is_display_kind": true,
+      "icon": "random",
+      "color": "#E91E63"
+    },
+    {
+      "name": "GCP_WorkloadIdentityProvider",
+      "display_name": "GCP Workload Identity Provider",
+      "description": "GCP-Hound node kind GCP_WorkloadIdentityProvider",
+      "is_display_kind": true,
+      "icon": "random",
+      "color": "#F48FB1"
     }
   ],
   "relationship_kinds": [
