@@ -179,10 +179,24 @@ class BloodHoundRegistrar:
                         "(filter Platform = GCP-Hound / extension name)"
                     )
                     return True
+                body = (response.text or "")[:500]
+                # Prefer surfacing Cypher/schema validation over a version guess —
+                # a 400 with "invalid Cypher" means the server *does* support bundles.
+                if "invalid Cypher" in body or "graph schema validation" in body:
+                    hint = (
+                        "Saved-query Cypher failed server validation "
+                        "(fix aliases/reserved words in saved_queries.json)."
+                    )
+                elif response.status_code in (404, 405):
+                    hint = "Server may be < BloodHound v9.9 (ZIP extension bundles)."
+                else:
+                    hint = (
+                        "If this is not a Cypher validation error, "
+                        "confirm BloodHound v9.9+ (CE or Enterprise)."
+                    )
                 self.logger.warning(
                     f"⚠️ Bundle upload failed ({response.status_code}); "
-                    f"falling back to schema-only JSON. "
-                    f"Saved queries need BloodHound v9.9+. Response: {response.text[:300]}"
+                    f"falling back to schema-only JSON. {hint} Response: {body}"
                 )
             except Exception as e:
                 self.logger.warning(
@@ -203,8 +217,9 @@ class BloodHoundRegistrar:
                 )
                 if use_bundle:
                     self.logger.warning(
-                        "⚠️ Saved queries were NOT installed (server may be < 9.9). "
-                        "Upgrade BloodHound or import saved_queries.json manually."
+                        "⚠️ Saved queries were NOT installed with the schema fallback. "
+                        "Re-run after fixing saved_queries.json, or import them manually. "
+                        "ZIP bundles require BloodHound v9.9+ (CE and Enterprise)."
                     )
                 return True
             self.logger.error(f"❌ Extension install failed: {response.status_code}")

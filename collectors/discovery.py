@@ -53,6 +53,25 @@ def discover_projects_comprehensive(creds):
                     raise  # Re-raise other HTTP errors
         
         if projects:
+            active, skipped = [], []
+            for project in projects:
+                state = (project.get('lifecycleState') or project.get('state') or '').upper()
+                # Soft-deleted / pending-delete projects still appear in list but
+                # cannot be used as quota targets (USER_PROJECT_DENIED / deleted).
+                if state and state not in ('ACTIVE', 'LIFECYCLE_STATE_UNSPECIFIED'):
+                    skipped.append(project)
+                    continue
+                active.append(project)
+            if skipped:
+                print(f"[~] Skipping {len(skipped)} non-ACTIVE project(s) "
+                      f"(deleted/pending delete) to avoid quota/API 403 noise")
+                for project in skipped:
+                    pid = project.get('projectId', '?')
+                    state = project.get('lifecycleState') or project.get('state') or '?'
+                    print(f"    - {pid} ({state})")
+            projects = active
+
+        if projects:
             discovery_method = "Cloud Resource Manager API"
             print(f"[+] Discovered {len(projects)} projects via Cloud Resource Manager API")
             for project in projects:
