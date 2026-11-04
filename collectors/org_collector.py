@@ -15,8 +15,10 @@ def collect_orgs(creds):
             credentials=credentials_for_bootstrap(creds),
         )
         orgs = []
-        # Empty query returns organizations the caller can see.
-        request = crm.organizations().search(body={"query": ""})
+        # Empty filter returns organizations the caller can see. The search
+        # body field is "filter" (not "query" — the API rejects unknown
+        # body fields with a 400).
+        request = crm.organizations().search(body={})
         while request is not None:
             resp = request.execute()
             orgs.extend(resp.get("organizations", []))

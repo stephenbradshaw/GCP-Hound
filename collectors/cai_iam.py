@@ -10,14 +10,18 @@ Requires cloudasset.assets.searchAllIamPolicies, included in
 roles/cloudasset.viewer (not in roles/iam.securityAuditor). On permission
 failure the caller should fall back to the standard getIamPolicy flow.
 
+The cloudasset v1 discovery document does not expose the
+iamPolicies.searchAll method, so this module calls the REST endpoint
+directly over an AuthorizedSession (google.auth, already a dependency).
+
 v1 scope: organization / folder / project policies. Resource-level policies
 (buckets, secrets, SAs, ...) are counted and reported but not transformed.
 """
 
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+from google.auth.transport.requests import AuthorizedSession
 from utils.auth import credentials_for_bootstrap
 
+_CAI_SEARCH_URL = "https://cloudasset.googleapis.com/v1/{scope}:searchAllIamPolicies"
 _CRM_PREFIX = "//cloudresourcemanager.googleapis.com/"
 
 
@@ -66,10 +70,10 @@ def collect_iam_policies_cai(creds, orgs=None, folders=None, projects=None, args
         return None
 
     try:
-        cai = build("cloudasset", "v1", credentials=credentials_for_bootstrap(creds))
+        session = AuthorizedSession(credentials_for_bootstrap(creds))
     except Exception as e:
         if args and args.debug:
-            print(f"[DEBUG] CAI service build failed: {e}")
+            print(f"[DEBUG] CAI credentials unavailable: {e}")
         print(f"[!] CAI IAM collection unavailable ({e}); falling back to getIamPolicy flow")
         return None
 
@@ -78,25 +82,31 @@ def collect_iam_policies_cai(creds, orgs=None, folders=None, projects=None, args
 
     for scope in scopes:
         try:
-            request = cai.iamPolicies().searchAll(scope=scope, pageSize=1000)
-            while request is not None:
-                response = request.execute()
-                for result in response.get("results", []):
+            url = _CAI_SEARCH_URL.format(scope=scope)
+            params = {"pageSize": "1000"}
+            while True:
+                response = session.post(url, params=params, json={})
+                if response.status_code == 403:
+                    print(f"[!] CAI searchAllIamPolicies denied on {scope} "
+                          f"(needs cloudasset.assets.searchAllIamPolicies / roles/cloudasset.viewer); "
+                          f"falling back to getIamPolicy flow")
+                    return None
+                if response.status_code != 200:
+                    print(f"[!] CAI searchAllIamPolicies failed on {scope} "
+                          f"(HTTP {response.status_code}): {response.text[:200]}; "
+                          f"falling back to getIamPolicy flow")
+                    return None
+                data = response.json()
+                for result in data.get("results", []):
                     policy = _transform_cai_result(result)
                     if policy:
                         iam_data.append(policy)
                     elif result.get("resource"):
                         skipped_resource_policies += 1
-                request = cai.iamPolicies().searchAll_next(request, response)
-        except HttpError as e:
-            if e.resp is not None and e.resp.status == 403:
-                print(f"[!] CAI searchAllIamPolicies denied on {scope} "
-                      f"(needs cloudasset.assets.searchAllIamPolicies / roles/cloudasset.viewer); "
-                      f"falling back to getIamPolicy flow")
-            else:
-                print(f"[!] CAI searchAllIamPolicies failed on {scope}: {e}; "
-                      f"falling back to getIamPolicy flow")
-            return None
+                page_token = data.get("nextPageToken") or ""
+                if not page_token:
+                    break
+                params["pageToken"] = page_token
         except Exception as e:
             print(f"[!] CAI searchAllIamPolicies error on {scope}: {e}; "
                   f"falling back to getIamPolicy flow")
