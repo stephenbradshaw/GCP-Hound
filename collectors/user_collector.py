@@ -1,5 +1,6 @@
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from utils.auth import credentials_for_bootstrap
 
 def collect_users(creds, projects, iam_data=None):
     """
@@ -25,7 +26,11 @@ def collect_users(creds, projects, iam_data=None):
 
     admin_service = None
     try:
-        admin_service = build('admin', 'directory_v1', credentials=creds)
+        # Admin SDK requires a quota project; use bootstrap fallback only.
+        admin_service = build(
+            'admin', 'directory_v1',
+            credentials=credentials_for_bootstrap(creds),
+        )
     except Exception as e:
         print(f"[!] Could not build Admin SDK client: {e}")
 
@@ -280,7 +285,10 @@ def collect_cloud_identity_groups(creds):
     memberships = []
 
     try:
-        service = build('cloudidentity', 'v1', credentials=creds)
+        service = build(
+            'cloudidentity', 'v1',
+            credentials=credentials_for_bootstrap(creds),
+        )
     except Exception as e:
         print(f"[!] Cloud Identity API unavailable: {e}")
         return groups, memberships

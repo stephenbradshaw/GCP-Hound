@@ -1,6 +1,7 @@
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import time
+from utils.auth import credentials_for_bootstrap, credentials_for_project
 
 class TerminalColors:
     """ANSI color codes for colorful terminal output"""
@@ -28,7 +29,8 @@ def discover_projects_comprehensive(creds):
     
     # Method 1: Try Cloud Resource Manager API with pagination
     try:
-        crm = build("cloudresourcemanager", "v1", credentials=creds)
+        # projects.list has no target project — needs bootstrap quota project
+        crm = build("cloudresourcemanager", "v1", credentials=credentials_for_bootstrap(creds))
         request = crm.projects().list()
         
         # Add pagination loop to existing logic
@@ -115,7 +117,12 @@ def discover_apis_for_projects(creds, projects):
             continue
             
         try:
-            serviceusage = build("serviceusage", "v1", credentials=creds)
+            # Quota against the target project so Service Usage need only be
+            # enabled there — not on a central ADC quota project.
+            serviceusage = build(
+                "serviceusage", "v1",
+                credentials=credentials_for_project(creds, project_id),
+            )
             request = serviceusage.services().list(
                 parent=f"projects/{project_id}",
                 filter="state:ENABLED"

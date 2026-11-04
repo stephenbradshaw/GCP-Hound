@@ -1,4 +1,5 @@
 from googleapiclient.discovery import build
+from utils.auth import credentials_for_bootstrap
 
 def collect_orgs(creds):
     """
@@ -6,7 +7,7 @@ def collect_orgs(creds):
     Returns a list of organization dicts.
     """
     try:
-        crm = build("cloudresourcemanager", "v1", credentials=creds)
+        crm = build("cloudresourcemanager", "v1", credentials=credentials_for_bootstrap(creds))
         resp = crm.organizations().list().execute()
         orgs = resp.get('organizations', [])
         if orgs:

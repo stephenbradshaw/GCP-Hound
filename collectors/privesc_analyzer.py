@@ -33,7 +33,9 @@ def check_workspace_admin_status(creds):
     }
 
     try:
-        admin_service = build('admin', 'directory_v1', credentials=creds)
+        from utils.auth import credentials_for_bootstrap
+        admin_creds = credentials_for_bootstrap(creds)
+        admin_service = build('admin', 'directory_v1', credentials=admin_creds)
         admin_service.users().list(customer='my_customer', maxResults=1).execute()
         admin_status['hasAdminAccess'] = True
         admin_status['hasGroupsAccess'] = True
@@ -56,7 +58,9 @@ def check_workspace_admin_status(creds):
 
     # Groups-only Admin SDK
     try:
-        admin_service = build('admin', 'directory_v1', credentials=creds)
+        from utils.auth import credentials_for_bootstrap
+        admin_creds = credentials_for_bootstrap(creds)
+        admin_service = build('admin', 'directory_v1', credentials=admin_creds)
         admin_service.groups().list(customer='my_customer', maxResults=1).execute()
         admin_status['hasGroupsAccess'] = True
         admin_status['adminLevel'] = 'Directory API read (Groups only)'
@@ -68,7 +72,8 @@ def check_workspace_admin_status(creds):
 
     # Cloud Identity groups fallback probe
     try:
-        ci = build('cloudidentity', 'v1', credentials=creds)
+        from utils.auth import credentials_for_bootstrap
+        ci = build('cloudidentity', 'v1', credentials=credentials_for_bootstrap(creds))
         ci.groups().list(parent='customers/my_customer', view='BASIC', pageSize=1).execute()
         admin_status['hasGroupsAccess'] = True
         admin_status['hasAdminAccess'] = True

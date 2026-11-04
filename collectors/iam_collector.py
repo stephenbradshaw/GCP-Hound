@@ -1,5 +1,6 @@
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from utils.auth import credentials_for_bootstrap, credentials_for_project
 
 def collect_iam(creds, projects, args=None, orgs=None, folders=None):
     """
@@ -50,7 +51,6 @@ def _log_iam_http_error(args, scope_label, resource_id, error):
 def _collect_project_iam(creds, projects, args=None):
     iam_data = []
     try:
-        crm = build("cloudresourcemanager", "v1", credentials=creds)
         if args and args.verbose:
             print(f"[*] IAM Collector: Analyzing {len(projects)} projects for IAM bindings...")
 
@@ -60,6 +60,10 @@ def _collect_project_iam(creds, projects, args=None):
                 continue
 
             try:
+                crm = build(
+                    "cloudresourcemanager", "v1",
+                    credentials=credentials_for_project(creds, project_id),
+                )
                 policy = crm.projects().getIamPolicy(
                     resource=project_id,
                     body={}
@@ -103,7 +107,10 @@ def _collect_organization_iam(creds, orgs, args=None):
     """Collect org-level IAM. Needs resourcemanager.organizations.getIamPolicy."""
     iam_data = []
     try:
-        crm = build("cloudresourcemanager", "v1", credentials=creds)
+        crm = build(
+            "cloudresourcemanager", "v1",
+            credentials=credentials_for_bootstrap(creds),
+        )
         if args and args.verbose:
             print(f"[*] IAM Collector: Analyzing {len(orgs)} organizations for IAM bindings...")
 
@@ -157,7 +164,10 @@ def _collect_folder_iam(creds, folders, args=None):
     iam_data = []
     try:
         # Folder IAM lives on Resource Manager v2/v3, not v1 projects API.
-        crm = build("cloudresourcemanager", "v2", credentials=creds)
+        crm = build(
+            "cloudresourcemanager", "v2",
+            credentials=credentials_for_bootstrap(creds),
+        )
         if args and args.verbose:
             print(f"[*] IAM Collector: Analyzing {len(folders)} folders for IAM bindings...")
 

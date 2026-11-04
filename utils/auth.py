@@ -7,6 +7,96 @@ from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as UserCredentials
 import google.auth
 
+# Env / ADC quota used only for APIs with no target project (Admin SDK, org
+# bootstrap, projects.list). Project-scoped collectors should call
+# credentials_for_project() so each target project is the quota consumer.
+QUOTA_ENV_VARS = ("GCPHOUND_QUOTA_PROJECT", "GOOGLE_CLOUD_QUOTA_PROJECT")
+
+
+def get_quota_fallback(creds=None):
+    """Project ID used only when a call has no natural target project."""
+    for key in QUOTA_ENV_VARS:
+        value = (os.environ.get(key) or "").strip()
+        if value:
+            return value
+    if creds is not None:
+        stored = getattr(creds, "_gcphound_quota_fallback", None)
+        if stored:
+            return stored
+        return getattr(creds, "quota_project_id", None)
+    return None
+
+
+def credentials_with_quota(creds, project_id):
+    """Return creds that send x-goog-user-project for the given project."""
+    if not creds or not project_id or not hasattr(creds, "with_quota_project"):
+        return creds
+    try:
+        cloned = creds.with_quota_project(project_id)
+        # Preserve identity metadata attached by get_google_credentials
+        for attr in ("account_email", "verified_account_email", "_gcphound_quota_fallback"):
+            if hasattr(creds, attr):
+                try:
+                    setattr(cloned, attr, getattr(creds, attr))
+                except Exception:
+                    pass
+        return cloned
+    except Exception:
+        return creds
+
+
+def credentials_for_project(creds, project_id):
+    """
+    Prefer the *target* project as quota project so IAM/Service Usage/etc.
+    only need to be enabled on that project—not on a central ADC quota project.
+    """
+    if project_id:
+        return credentials_with_quota(creds, project_id)
+    return credentials_for_bootstrap(creds)
+
+
+def credentials_for_bootstrap(creds):
+    """
+    Quota for org/folder/project discovery and Workspace Admin SDK.
+    Uses GCPHOUND_QUOTA_PROJECT / GOOGLE_CLOUD_QUOTA_PROJECT / ADC fallback.
+    """
+    fallback = get_quota_fallback(creds)
+    if fallback:
+        return credentials_with_quota(creds, fallback)
+    return creds
+
+
+def _detach_global_quota(creds):
+    """
+    Clear ADC's global quota_project_id so every API call does not require
+    every service enabled on one project. Fallback is kept for bootstrap/Admin.
+    """
+    fallback = get_quota_fallback(creds)
+    try:
+        creds._gcphound_quota_fallback = fallback
+    except Exception:
+        pass
+    if not getattr(creds, "quota_project_id", None):
+        return creds
+    if hasattr(creds, "with_quota_project"):
+        try:
+            cleared = creds.with_quota_project(None)
+            try:
+                cleared._gcphound_quota_fallback = fallback
+            except Exception:
+                pass
+            for attr in ("account_email", "verified_account_email"):
+                if hasattr(creds, attr):
+                    try:
+                        setattr(cleared, attr, getattr(creds, attr))
+                    except Exception:
+                        pass
+            return cleared
+        except Exception:
+            pass
+    return creds
+
+
 def get_google_credentials(debug=False):
     """
     Attempts to retrieve Google Cloud credentials in order:
@@ -14,6 +104,11 @@ def get_google_credentials(debug=False):
     2. Application Default Credentials (gcloud auth application-default login).
     3. Experimental: gcloud CLI credentials.db (active account)—handles both service accounts and user OAuth.
     Exits the process with a descriptive message if no credentials are found.
+
+    User ADC quota is applied selectively: project-scoped calls should use
+    credentials_for_project(); Admin SDK / org bootstrap use credentials_for_bootstrap().
+    Set GCPHOUND_QUOTA_PROJECT to a small project with Admin SDK + Resource Manager
+    enabled—do not enable every collector API there.
     """
     # 1. Preferred: Service account for automation (key file, no browser)
     env_path = os.getenv("GCP_CREDS")
@@ -45,6 +140,14 @@ def get_google_credentials(debug=False):
                 f"the active gcloud CLI configuration '{config_name}' uses {cli_account}. The "
                 f"authenticated identity is verified against the credential token at startup."
             )
+        creds = _detach_global_quota(creds)
+        fallback = get_quota_fallback(creds)
+        if debug and fallback:
+            print(f"[DEBUG] Selective quota: fallback project={fallback} "
+                  f"(used only for Admin SDK / org bootstrap; project APIs use target project)")
+        elif debug:
+            print("[DEBUG] Selective quota: no fallback project set "
+                  "(set GCPHOUND_QUOTA_PROJECT for Admin SDK / projects.list)")
         return creds
     except Exception:
         pass

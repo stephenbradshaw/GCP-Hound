@@ -61,8 +61,9 @@ def collect_service_accounts(creds, projects):
         total_projects_processed += 1
         
         try:
-            # Build IAM client for this project
-            iam = build("iam", "v1", credentials=creds)
+            # Build IAM client; use target project as quota consumer
+            from utils.auth import credentials_for_project
+            iam = build("iam", "v1", credentials=credentials_for_project(creds, project_id))
             project_name = f'projects/{project_id}'
             
             # Use pagination helper to get all service accounts

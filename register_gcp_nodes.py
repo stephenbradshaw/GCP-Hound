@@ -3,14 +3,20 @@
 GCP-Hound BloodHound registration helpers.
 
 Installs:
-  1) OpenGraph extension definition schema (required for CE pathfinding)
+  1) OpenGraph extension (schema + optional saved Cypher queries as a ZIP bundle)
   2) Optional custom-node icons via /api/v2/custom-nodes
+
+BloodHound v9.9.0+ accepts extension ZIP bundles with:
+  schema.json, saved_queries.json (optional), pz_rules.json (optional)
+Older servers still accept schema-only JSON (no saved queries).
 """
 
 import argparse
+import io
 import json
 import logging
 import sys
+import zipfile
 from pathlib import Path
 
 import requests
@@ -20,6 +26,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 DEFAULT_MODEL = "gcp-model.json"
 DEFAULT_EXTENSION = "gcp-extension-schema.json"
+DEFAULT_SAVED_QUERIES = "saved_queries.json"
 
 
 class BloodHoundRegistrar:
@@ -102,10 +109,35 @@ class BloodHoundRegistrar:
             self.delete_kind(kind)
         return True
 
-    def install_extension(self, schema_path):
-        """Install/update the OpenGraph extension definition schema (pathfinding)."""
+    def _build_extension_bundle(self, schema_path, saved_queries_path=None):
+        """Build an in-memory ZIP: schema.json (+ saved_queries.json when present)."""
+        schema_path = Path(schema_path)
+        schema = json.loads(schema_path.read_text())
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            # Bundle requires the file to be named schema.json at ZIP root
+            zf.writestr("schema.json", json.dumps(schema, indent=2))
+            query_count = 0
+            if saved_queries_path and Path(saved_queries_path).is_file():
+                queries_obj = json.loads(Path(saved_queries_path).read_text())
+                query_count = len(queries_obj.get("queries", []))
+                zf.writestr(
+                    "saved_queries.json",
+                    json.dumps(queries_obj, indent=2),
+                )
+        buf.seek(0)
+        return buf, schema, query_count
+
+    def install_extension(self, schema_path, saved_queries_path=None):
+        """
+        Install/update the OpenGraph extension.
+
+        Prefers a ZIP bundle (schema + saved queries) for BH 9.9+.
+        Falls back to schema-only JSON if the server rejects the bundle.
+        """
+        schema_path = Path(schema_path)
         try:
-            schema = json.loads(Path(schema_path).read_text())
+            schema = json.loads(schema_path.read_text())
         except Exception as e:
             self.logger.error(f"❌ Could not load extension schema {schema_path}: {e}")
             return False
@@ -116,6 +148,47 @@ class BloodHoundRegistrar:
             f"{meta.get('name')} {meta.get('version')} "
             f"(namespace={meta.get('namespace')})"
         )
+
+        queries_path = Path(saved_queries_path) if saved_queries_path else None
+        use_bundle = bool(queries_path and queries_path.is_file())
+
+        if use_bundle:
+            try:
+                bundle, schema, query_count = self._build_extension_bundle(
+                    schema_path, queries_path
+                )
+                self.logger.info(
+                    f"📦 Uploading extension bundle "
+                    f"(schema + {query_count} saved queries)"
+                )
+                response = self.session.put(
+                    self.url + "/api/v2/extensions",
+                    data=bundle.getvalue(),
+                    headers={"Content-Type": "application/zip"},
+                    timeout=120,
+                )
+                if response.status_code in (200, 201):
+                    self.logger.info("✅ OpenGraph extension bundle installed/updated")
+                    self.logger.info(
+                        f"   node_kinds={len(schema.get('node_kinds', []))} "
+                        f"relationship_kinds={len(schema.get('relationship_kinds', []))} "
+                        f"saved_queries={query_count}"
+                    )
+                    self.logger.info(
+                        "   Saved queries appear under Explore → Saved Queries "
+                        "(filter Platform = GCP-Hound / extension name)"
+                    )
+                    return True
+                self.logger.warning(
+                    f"⚠️ Bundle upload failed ({response.status_code}); "
+                    f"falling back to schema-only JSON. "
+                    f"Saved queries need BloodHound v9.9+. Response: {response.text[:300]}"
+                )
+            except Exception as e:
+                self.logger.warning(
+                    f"⚠️ Bundle upload error ({e}); falling back to schema-only JSON"
+                )
+
         try:
             response = self.session.put(
                 self.url + "/api/v2/extensions",
@@ -123,11 +196,16 @@ class BloodHoundRegistrar:
                 timeout=120,
             )
             if response.status_code in (200, 201):
-                self.logger.info("✅ OpenGraph extension installed/updated")
+                self.logger.info("✅ OpenGraph extension schema installed/updated")
                 self.logger.info(
                     f"   node_kinds={len(schema.get('node_kinds', []))} "
                     f"relationship_kinds={len(schema.get('relationship_kinds', []))}"
                 )
+                if use_bundle:
+                    self.logger.warning(
+                        "⚠️ Saved queries were NOT installed (server may be < 9.9). "
+                        "Upgrade BloodHound or import saved_queries.json manually."
+                    )
                 return True
             self.logger.error(f"❌ Extension install failed: {response.status_code}")
             self.logger.error(f"Response: {response.text}")
@@ -199,6 +277,12 @@ def main():
         help="Path to OpenGraph extension definition schema JSON",
     )
     parser.add_argument(
+        "--saved-queries",
+        default=DEFAULT_SAVED_QUERIES,
+        help="Path to saved_queries.json included in the extension ZIP bundle "
+        "(BloodHound v9.9+). Pass empty string to skip.",
+    )
+    parser.add_argument(
         "--icons-only",
         action="store_true",
         help="Only register custom-node icons (skip extension schema)",
@@ -206,7 +290,7 @@ def main():
     parser.add_argument(
         "--extension-only",
         action="store_true",
-        help="Only install extension schema (skip custom-node icons)",
+        help="Only install extension schema/bundle (skip custom-node icons)",
     )
     parser.add_argument(
         "--reset",
@@ -241,7 +325,11 @@ def main():
         ok = True
 
         if not args.icons_only:
-            if not registrar.install_extension(args.extension_schema):
+            saved = args.saved_queries.strip() if args.saved_queries else ""
+            if not registrar.install_extension(
+                args.extension_schema,
+                saved_queries_path=saved or None,
+            ):
                 ok = False
 
         if not args.extension_only:
@@ -258,14 +346,14 @@ def main():
         print("\n🎉 SUCCESS! BloodHound is ready for GCP-Hound structured graphs")
         print("=" * 60)
         if not args.icons_only:
-            print("✅ OpenGraph extension schema installed (enables pathfinding)")
+            print("✅ OpenGraph extension installed (schema ± saved Cypher queries)")
         if not args.extension_only:
             print("✅ Custom GCP node icons registered")
         print("\n💡 Next steps:")
         print("   1. python3 gcp-hound.py")
         print("   2. Upload output/*gcp-bhopgraph.json in BloodHound")
-        print("   3. Pathfinding / Cypher with kinds like GCP_ServiceAccount,")
-        print("      GCP_CanCreateKeys, GCP_CanImpersonate")
+        print("   3. Explore → Saved Queries → filter by GCP-Hound / Identity")
+        print("   4. Pathfinding with traversable edges (GCP_MemberOf, GCP_CanCreateKeys, …)")
     finally:
         registrar.logout()
 

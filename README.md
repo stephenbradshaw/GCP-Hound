@@ -79,6 +79,27 @@ resourcemanager.projects.getIamPolicy
 
 Without org/folder `getIamPolicy`, attack paths that start from org- or folder-level grants are invisible even if project IAM is fully collected.
 
+### ADC quota project (restricted environments)
+
+User ADC (`gcloud auth application-default login`) needs a quota project for some APIs. **Do not** point a global ADC quota project at one place and enable every collector API there.
+
+GCP-Hound applies quota selectively:
+
+| Call type | Quota project | APIs to enable there |
+| --- | --- | --- |
+| Project-scoped (list SAs, Service Usage, project IAM, …) | **The target project** | Already typical on lab/workload projects |
+| Admin SDK / org bootstrap (`projects.list`, org/folder IAM) | `GCPHOUND_QUOTA_PROJECT` (or `GOOGLE_CLOUD_QUOTA_PROJECT` / ADC fallback) | Only `admin.googleapis.com` + `cloudresourcemanager.googleapis.com` (+ optional `cloudidentity.googleapis.com`) |
+
+```bash
+# Small bootstrap project — NOT every API
+export GCPHOUND_QUOTA_PROJECT=engaged-code-513102-f7
+gcloud services enable admin.googleapis.com cloudresourcemanager.googleapis.com \
+  --project="$GCPHOUND_QUOTA_PROJECT"
+
+# Optional: clear a global ADC quota so it cannot override selective behaviour
+# (GCP-Hound also detaches ADC quota_project_id and re-applies only where needed)
+```
+
 ## Known Issues
 
 - Some edge types/descriptions are still experimental and may change.
@@ -168,19 +189,20 @@ gcloud auth login
 
 ### **3. BloodHound OpenGraph setup (required for pathfinding)**
 
-Install the GCP-Hound **extension definition schema** (enables CE pathfinding on traversable abuse edges) and optional custom-node icons:
+Install the GCP-Hound **extension** (schema + saved Cypher queries) and optional custom-node icons:
 
 ```
 python3 register_gcp_nodes.py -s http://localhost:8080 -u admin -p password
 ```
 
-This uploads `gcp-extension-schema.json` via `PUT /api/v2/extensions` and registers icons from `gcp-model.json`.
+On BloodHound **v9.9+**, this uploads a ZIP bundle (`schema.json` + `saved_queries.json`) via `PUT /api/v2/extensions`. Older servers fall back to schema-only JSON (no saved queries). Icons still come from `gcp-model.json`.
 
 - ✅ Structured graph kinds (`GCP_ServiceAccount`, `GCP_CanCreateKeys`, …)
 - ✅ Pathfinding on traversable abuse edges (`is_traversable: true`)
+- ✅ Saved queries under Explore → Saved Queries (Identity / IAM / Attack Paths)
 - ✅ Custom GCP icons in the BloodHound UI
 
-Flags: `--extension-only`, `--icons-only`, `--extension-schema PATH`.
+Flags: `--extension-only`, `--icons-only`, `--extension-schema PATH`, `--saved-queries PATH` (default `saved_queries.json`; pass `''` to skip).
 
 Re-collect after upgrading: exports now emit namespaced kinds that must match the installed schema.
 

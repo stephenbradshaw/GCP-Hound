@@ -1,5 +1,6 @@
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from utils.auth import credentials_for_bootstrap
 
 def collect_folders(creds, orgs):
     """
@@ -18,8 +19,11 @@ def collect_folders(creds, orgs):
         return discover_accessible_folders(creds)
     
     try:
-        # Build Cloud Resource Manager service
-        crm_service = build('cloudresourcemanager', 'v1', credentials=creds)
+        # Build Cloud Resource Manager service (org-scoped → bootstrap quota)
+        crm_service = build(
+            'cloudresourcemanager', 'v1',
+            credentials=credentials_for_bootstrap(creds),
+        )
         
         print(f"[*] Folder Collector: Enumerating folders for {len(orgs)} organizations...")
         
@@ -127,7 +131,10 @@ def discover_accessible_folders(creds):
     folder_hierarchy = {}
     
     try:
-        crm_v2 = build('cloudresourcemanager', 'v2', credentials=creds)
+        crm_v2 = build(
+            'cloudresourcemanager', 'v2',
+            credentials=credentials_for_bootstrap(creds),
+        )
         
         print("[*] Attempting to discover accessible folders via search...")
         
