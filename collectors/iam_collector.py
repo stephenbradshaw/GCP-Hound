@@ -21,7 +21,7 @@ def collect_iam(creds, projects, args=None, orgs=None, folders=None):
         from collectors.cai_iam import collect_iam_policies_cai
         cai_data = collect_iam_policies_cai(
             creds, orgs=orgs, folders=folders, projects=projects, args=args)
-        if cai_data is not None:
+        if cai_data is not None and cai_data:
             iam_data.extend(cai_data)
             if args and args.verbose:
                 by_type = {}
@@ -32,7 +32,14 @@ def collect_iam(creds, projects, args=None, orgs=None, folders=None):
                 print(f"[+] IAM Collector: Completed analysis of {len(iam_data)} policies "
                       f"({summary or 'none'}) via Cloud Asset Inventory")
             return iam_data
-        # CAI unavailable/denied: continue with the standard flow below
+        if cai_data is not None and not cai_data:
+            # CAI call succeeded but returned nothing while the caller is
+            # known to hold project-level getIamPolicy — treat as suspect
+            # (propagation lag, deny policy, partial scope visibility) and
+            # fall back rather than silently losing all IAM data.
+            print("[!] CAI returned 0 policies; falling back to getIamPolicy flow "
+                  "to avoid losing IAM coverage (re-run to confirm CAI behavior)")
+        # CAI unavailable/denied/empty: continue with the standard flow below
 
     if projects:
         iam_data.extend(_collect_project_iam(creds, projects, args))
