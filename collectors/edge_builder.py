@@ -385,6 +385,61 @@ def build_service_account_edges(service_accounts, projects, iam_data=None, debug
         print(f"[WARNING] Skipped {edges_skipped} invalid service account edges")
     return edges
 
+def determine_resource_edge_kind(role, resource_type):
+    """Map a role to an edge kind for resource-level IAM policies
+    (buckets, secrets, BigQuery datasets, service accounts).
+
+    Returns None when the role has no meaningful attack-path relationship
+    to that resource type — those bindings are skipped rather than
+    overstated. Custom roles are classified via the role resolver's
+    permission expansion.
+    """
+    role_lower = (role or '').lower()
+    perms = [p.lower() for p in role_resolver.permissions_for_role(role)] \
+        if role_resolver.has_role_definitions() else []
+
+    if resource_type == 'bucket':
+        if role_lower in ('roles/owner', 'roles/storage.admin') \
+                or 'storage.buckets.setiampolicy' in perms:
+            return 'CanModifyBucketPolicy'
+        return None
+    if resource_type == 'secret':
+        if role_lower in ('roles/secretmanager.secretaccessor', 'roles/secretmanager.admin') \
+                or 'secretmanager.versions.access' in perms:
+            return 'CanReadSecrets'
+        return None
+    if resource_type == 'dataset':
+        if role_lower in ('roles/bigquery.dataviewer', 'roles/bigquery.dataowner',
+                          'roles/bigquery.dataeditor', 'roles/bigquery.admin') \
+                or any(p.startswith('bigquery.datasets.') for p in perms):
+            return 'CanAccessBigQueryDataset'
+        return None
+    if resource_type == 'serviceAccount':
+        sa_role_kinds = {
+            'roles/owner': 'CanImpersonate',
+            'roles/editor': 'CanImpersonate',
+            'roles/iam.serviceaccountuser': 'CanImpersonate',
+            'roles/iam.serviceaccounttokencreator': 'CanGetAccessToken',
+            'roles/iam.serviceaccountkeyadmin': 'CanCreateKeys',
+        }
+        if role_lower in sa_role_kinds:
+            return sa_role_kinds[role_lower]
+        perm_map = {
+            'iam.serviceaccounts.actas': 'CanImpersonate',
+            'iam.serviceaccounts.getaccesstoken': 'CanGetAccessToken',
+            'iam.serviceaccounts.signblob': 'CanSignBlob',
+            'iam.serviceaccounts.signjwt': 'CanSignJWT',
+            'iam.serviceaccountkeys.create': 'CanCreateKeys',
+            'iam.serviceaccounts.setiampolicy': 'CanModifyIamPolicy',
+            'iam.serviceaccounts.listkeys': 'CanListKeys',
+        }
+        for perm in perms:
+            if perm in perm_map:
+                return perm_map[perm]
+        return None
+    # Other unmapped resource types have no meaningful edge kind.
+    return None
+
 def determine_enhanced_edge_kind_from_role(role, resource_type='project'):
     """Map role to enhanced edge kind for IAM edges (project / folder / organization)."""
     role_lower = role.lower()
@@ -454,6 +509,14 @@ def _iam_policy_target(iam_policy):
     if resource_type == 'folder' or iam_policy.get('folderId'):
         folder_id = iam_policy.get('folderId') or resource_name.replace('folders/', '')
         return 'folder', resource_name or f'folders/{folder_id}'
+    if resource_type == 'bucket':
+        return 'bucket', resource_name
+    if resource_type == 'secret':
+        return 'secret', resource_name
+    if resource_type == 'dataset':
+        return 'dataset', resource_name
+    if resource_type == 'serviceaccount':
+        return 'serviceAccount', resource_name
 
     project_id = (iam_policy.get('projectId') or '').lower()
     return 'project', project_id
@@ -516,14 +579,36 @@ def build_iam_binding_edges(iam_data, projects, debug=False):
                     member_type = 'Group'
                 else:
                     continue
+                condition = None
 
-                edge_kind = determine_enhanced_edge_kind_from_role(role, resource_type)
-                condition = binding_condition(binding)
-                if condition:
-                    # A conditional grant is not unconditional ownership or
-                    # policy control; downgrade strong kinds to the generic
-                    # role-grant edge and flag the condition on the edge.
-                    edge_kind = f'HasRoleOn{resource_type.capitalize()}'
+                # Resource-level IAM (buckets/secrets/datasets/SAs): only emit
+                # edges for roles with a meaningful attack-path relationship;
+                # the rest would overstate access. SA targets are covered by
+                # the privilege-escalation edge builder instead.
+                if resource_type in ('bucket', 'secret', 'dataset', 'serviceAccount'):
+                    if binding_condition(binding):
+                        # No generic HasRoleOn* edge kind exists for these
+                        # resource types; conditioned resource grants are
+                        # skipped rather than mislabeled.
+                        edges_skipped += 1
+                        continue
+                    edge_kind = determine_resource_edge_kind(role, resource_type)
+                    if not edge_kind:
+                        edges_skipped += 1
+                        continue
+                    if resource_type == 'dataset':
+                        resource_name = normalize_dataset_id(resource_name) or ''
+                        if not resource_name:
+                            edges_skipped += 1
+                            continue
+                else:
+                    edge_kind = determine_enhanced_edge_kind_from_role(role, resource_type)
+                    condition = binding_condition(binding)
+                    if condition:
+                        # A conditional grant is not unconditional ownership or
+                        # policy control; downgrade strong kinds to the generic
+                        # role-grant edge and flag the condition on the edge.
+                        edge_kind = f'HasRoleOn{resource_type.capitalize()}'
                 risk_level = determine_risk_level_from_role(role)
 
                 description = f"{member_type} {member_id} has {role} on {resource_type} {resource_name}"
@@ -805,6 +890,11 @@ def build_privilege_escalation_edges(iam_data, service_accounts, secrets=None, d
 
     for iam_policy in iam_data:
         project_id = iam_policy.get('projectId', '').lower()
+        # CAI-sourced SA-level policies target one specific SA; the
+        # role-permission edges for them are built in build_iam_binding_edges
+        # (exact target), so skip the project-wide fan-out here.
+        if (iam_policy.get('resourceType') or '').lower() == 'serviceaccount':
+            continue
         bindings = iam_policy.get('bindings', [])
 
         for binding in bindings:

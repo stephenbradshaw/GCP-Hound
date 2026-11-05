@@ -14,8 +14,10 @@ The cloudasset v1 discovery document does not expose the
 iamPolicies.searchAll method, so this module calls the REST endpoint
 directly over an AuthorizedSession (google.auth, already a dependency).
 
-v1 scope: organization / folder / project policies. Resource-level policies
-(buckets, secrets, SAs, ...) are counted and reported but not transformed.
+Covers the resource-manager hierarchy (org/folder/project) plus
+resource-level policies on buckets, secrets, BigQuery datasets and
+service accounts, which map onto existing node ids. Other resource
+types are counted and reported but not transformed.
 """
 
 from google.auth.transport.requests import AuthorizedSession
@@ -131,7 +133,10 @@ def collect_iam_policies_cai(creds, orgs=None, folders=None, projects=None, args
 def _transform_cai_result(result):
     """Convert a CAI searchAllIamPolicies result to the iam_data dict format.
 
-    Returns None for resources outside the resource-manager hierarchy.
+    Resource-manager hierarchy resources map directly; a few resource-level
+    families (buckets, secrets, BigQuery datasets, service accounts) map to
+    existing node ids so resource-scoped bindings produce real edges instead
+    of being discarded. Returns None for anything else.
     """
     resource = result.get("resource") or ""
     iam_policy = result.get("iamPolicy") or {}
@@ -139,42 +144,92 @@ def _transform_cai_result(result):
     if not bindings:
         return None
 
-    if not resource.startswith(_CRM_PREFIX):
+    if not resource.startswith("//"):
         return None
 
-    path = resource[len(_CRM_PREFIX):]
+    without_protocol = resource[2:]
+    slash_idx = without_protocol.find("/")
+    if slash_idx <= 0:
+        return None
+    service = without_protocol[:slash_idx]
+    path = without_protocol[slash_idx + 1:].rstrip("/")
     parts = path.split("/")
 
-    if len(parts) >= 2 and parts[0] == "projects":
-        project_id = parts[1]
+    if service == "cloudresourcemanager.googleapis.com":
+        if len(parts) >= 2 and parts[0] == "projects":
+            project_id = parts[1]
+            return {
+                "resourceType": "project",
+                "resourceName": f"projects/{project_id}",
+                "projectId": project_id,
+                "projectName": project_id,
+                "bindings": bindings,
+                "bindingCount": len(bindings),
+                "source": "cai_search_all",
+            }
+        if len(parts) >= 2 and parts[0] == "folders":
+            folder_id = parts[1]
+            return {
+                "resourceType": "folder",
+                "resourceName": f"folders/{folder_id}",
+                "folderId": folder_id,
+                "bindings": bindings,
+                "bindingCount": len(bindings),
+                "source": "cai_search_all",
+            }
+        if len(parts) >= 2 and parts[0] == "organizations":
+            org_id = parts[1]
+            return {
+                "resourceType": "organization",
+                "resourceName": f"organizations/{org_id}",
+                "organizationId": org_id,
+                "organizationName": org_id,
+                "bindings": bindings,
+                "bindingCount": len(bindings),
+                "source": "cai_search_all",
+            }
+        return None
+
+    if service == "storage.googleapis.com" and len(parts) >= 2 and parts[0] == "buckets":
         return {
-            "resourceType": "project",
-            "resourceName": f"projects/{project_id}",
-            "projectId": project_id,
-            "projectName": project_id,
+            "resourceType": "bucket",
+            "resourceName": parts[1],
             "bindings": bindings,
             "bindingCount": len(bindings),
             "source": "cai_search_all",
         }
-    if len(parts) >= 2 and parts[0] == "folders":
-        folder_id = parts[1]
+
+    if service == "secretmanager.googleapis.com" and len(parts) >= 4 \
+            and parts[0] == "projects" and parts[2] == "secrets":
         return {
-            "resourceType": "folder",
-            "resourceName": f"folders/{folder_id}",
-            "folderId": folder_id,
+            "resourceType": "secret",
+            "resourceName": parts[3],
+            "projectId": parts[1],
             "bindings": bindings,
             "bindingCount": len(bindings),
             "source": "cai_search_all",
         }
-    if len(parts) >= 2 and parts[0] == "organizations":
-        org_id = parts[1]
+
+    if service == "bigquery.googleapis.com" and len(parts) >= 4 \
+            and parts[0] == "projects" and parts[2] == "datasets":
         return {
-            "resourceType": "organization",
-            "resourceName": f"organizations/{org_id}",
-            "organizationId": org_id,
-            "organizationName": org_id,
+            "resourceType": "dataset",
+            "resourceName": f"projects/{parts[1]}/datasets/{parts[3]}",
+            "projectId": parts[1],
             "bindings": bindings,
             "bindingCount": len(bindings),
             "source": "cai_search_all",
         }
+
+    if service == "iam.googleapis.com" and len(parts) >= 4 \
+            and parts[0] == "projects" and parts[2] == "serviceAccounts":
+        return {
+            "resourceType": "serviceAccount",
+            "resourceName": parts[3],
+            "projectId": parts[1],
+            "bindings": bindings,
+            "bindingCount": len(bindings),
+            "source": "cai_search_all",
+        }
+
     return None
