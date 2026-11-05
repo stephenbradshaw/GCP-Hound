@@ -78,6 +78,8 @@ def collect_kms_keys(creds, projects, args=None):
 
     if keys_out:
         print(f"[+] KMS: {len(keys_out)} crypto key(s)")
+    elif not denied_reported:
+        print("[~] KMS: no key rings or crypto keys found in enumerated projects")
 
     return keys_out
 
