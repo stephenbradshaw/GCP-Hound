@@ -27,6 +27,23 @@ _CAI_SEARCH_URL = "https://cloudasset.googleapis.com/v1/{scope}:searchAllIamPoli
 _CRM_PREFIX = "//cloudresourcemanager.googleapis.com/"
 
 
+def _error_reason(response):
+    """Extract the error reason from a google API JSON error response."""
+    try:
+        data = response.json()
+        details = data.get('error', {}).get('details', [])
+        for detail in details:
+            reason = detail.get('reason') or ''
+            if reason:
+                return reason
+        errors = data.get('error', {}).get('errors', [])
+        if errors:
+            return errors[0].get('reason') or ''
+        return data.get('error', {}).get('status') or ''
+    except Exception:
+        return ''
+
+
 def _resolve_scopes(orgs=None, folders=None, projects=None):
     """Build the list of CAI scopes to query.
 
@@ -92,9 +109,18 @@ def collect_iam_policies_cai(creds, orgs=None, folders=None, projects=None, args
                 # a generic front-end 404.
                 response = session.get(url, params=params)
                 if response.status_code == 403:
-                    print(f"[!] CAI searchAllIamPolicies denied on {scope} "
-                          f"(needs cloudasset.assets.searchAllIamPolicies / roles/cloudasset.viewer); "
-                          f"falling back to getIamPolicy flow")
+                    reason = _error_reason(response)
+                    if reason in ('SERVICE_DISABLED', 'accessNotConfigured', 'USER_PROJECT_DENIED'):
+                        print(f"[!] CAI searchAllIamPolicies failed on {scope} "
+                              f"({reason}): enable cloudasset.googleapis.com on the "
+                              f"quota project (GCPHOUND_QUOTA_PROJECT) and ensure the "
+                              f"caller has serviceusage.services.use there; "
+                              f"falling back to getIamPolicy flow")
+                    else:
+                        print(f"[!] CAI searchAllIamPolicies denied on {scope} "
+                              f"(needs cloudasset.assets.searchAllIamPolicies on the "
+                              f"search scope; reason: {reason or 'unknown'}); "
+                              f"falling back to getIamPolicy flow")
                     return None
                 if response.status_code != 200:
                     print(f"[!] CAI searchAllIamPolicies failed on {scope} "
