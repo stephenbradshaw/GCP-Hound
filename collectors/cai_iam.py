@@ -20,6 +20,8 @@ service accounts, which map onto existing node ids. Other resource
 types are counted and reported but not transformed.
 """
 
+import json
+
 from google.auth.transport.requests import AuthorizedSession
 from utils.auth import credentials_for_bootstrap
 
@@ -128,12 +130,19 @@ def collect_iam_policies_cai(creds, orgs=None, folders=None, projects=None, args
                           f"falling back to getIamPolicy flow")
                     return None
                 data = response.json()
-                for result in data.get("results", []):
+                results = data.get("results", [])
+                if args and args.debug and results:
+                    sample = json.dumps(results[0])[:500]
+                    print(f"[DEBUG] CAI result sample (keys={list(results[0].keys())}): {sample}")
+                for result in results:
                     policy = _transform_cai_result(result)
                     if policy:
                         iam_data.append(policy)
                     elif result.get("resource"):
                         skipped_resource_policies += 1
+                        if args and args.debug and skipped_resource_policies <= 3:
+                            print(f"[DEBUG] CAI skipped resource: {result.get('resource')} "
+                                  f"(keys={list(result.keys())})")
                 page_token = data.get("nextPageToken") or ""
                 if not page_token:
                     break
