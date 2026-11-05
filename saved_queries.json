@@ -76,6 +76,62 @@
       "category": "Attack Paths",
       "description": "Workload identity pools and providers per project (federation = external identity to SA impersonation surface).",
       "query": "MATCH p = (prj:GCP_Project)-[:GCP_Contains]->(pool:GCP_WorkloadIdentityPool)-[:GCP_Contains]->(prov:GCP_WorkloadIdentityProvider) RETURN p"
+    },
+    {
+      "query_key": "GCP_service_access",
+      "name": "GCP: Direct service access (SQL, Functions, Pub/Sub)",
+      "category": "Attack Paths",
+      "description": "Access edges from the signed-in user to Cloud SQL, Cloud Functions and Pub/Sub resources discovered by the collectors.",
+      "query": "MATCH p = (u)-[:GCP_CanAccessCloudSQL|GCP_CanAccessCloudFunction|GCP_CanAccessPubSub]->(t) RETURN p"
+    },
+    {
+      "query_key": "GCP_functions_running_as",
+      "name": "GCP: Functions running as service accounts",
+      "category": "Attack Paths",
+      "description": "Cloud Functions and the service accounts they run as — code execution in a function yields the SA's identity.",
+      "query": "MATCH p = (f:GCP_Function)-[:GCP_UsesServiceAccount]->(sa:GCP_ServiceAccount) RETURN p"
+    },
+    {
+      "query_key": "GCP_bucket_policy_grants",
+      "name": "GCP: Bucket policy grants (resource-level)",
+      "category": "IAM",
+      "description": "Principals with policy-control grants on individual storage buckets (resource-level IAM, CAI-based).",
+      "query": "MATCH p = (prin)-[:GCP_CanModifyBucketPolicy]->(b:GCP_Bucket) RETURN p"
+    },
+    {
+      "query_key": "GCP_direct_secret_grants",
+      "name": "GCP: Direct secret access grants (resource-level)",
+      "category": "Attack Paths",
+      "description": "Principals granted access on individual secrets (resource-level IAM, CAI-based) — distinct from project-wide access.",
+      "query": "MATCH p = (prin)-[:GCP_CanReadSecrets]->(s:GCP_Secret) RETURN p"
+    },
+    {
+      "query_key": "GCP_pubsub_topology",
+      "name": "GCP: Pub/Sub topology",
+      "category": "Inventory",
+      "description": "Topics, subscriptions and their SubscribesTo relationships.",
+      "query": "MATCH p = (t:GCP_PubSubTopic)<-[:GCP_SubscribesTo]-(s) RETURN p"
+    },
+    {
+      "query_key": "GCP_roles_permissions",
+      "name": "GCP: Roles by permission count",
+      "category": "Inventory",
+      "description": "IAM roles referenced in collected bindings with their expanded permission lists (custom roles show real permissions).",
+      "query": "MATCH (r:GCP_Role) RETURN r ORDER BY r.permissionCount DESC"
+    },
+    {
+      "query_key": "GCP_open_firewalls",
+      "name": "GCP: Open ingress firewall rules",
+      "category": "Inventory",
+      "description": "Firewall rules flagged HIGH risk (0.0.0.0/0 ingress, not disabled).",
+      "query": "MATCH (f:GCP_Firewall) WHERE f.riskLevel = 'HIGH' RETURN f"
+    },
+    {
+      "query_key": "GCP_kms_inventory",
+      "name": "GCP: KMS keys",
+      "category": "Inventory",
+      "description": "Cloud KMS crypto keys with purpose and rotation metadata.",
+      "query": "MATCH (k:GCP_KMSKey) RETURN k ORDER BY k.keyring"
     }
   ]
 }
