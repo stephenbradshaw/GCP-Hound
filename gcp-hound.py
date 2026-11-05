@@ -14,6 +14,9 @@ from collectors.secret_collector import collect_secrets, analyze_secret_access_p
 from collectors.compute_collector import collect_compute_instances, analyze_instance_privilege_escalation, build_compute_instance_edges
 from collectors.bigquery_collector import collect_bigquery_resources, analyze_bigquery_access_privileges, build_bigquery_edges
 from collectors.gke_collector import collect_gke_clusters, analyze_gke_privilege_escalation, build_gke_edges
+from collectors.cloudfunctions_collector import collect_cloud_functions, build_cloudfunctions_edges
+from collectors.cloudsql_collector import collect_cloudsql_instances, build_cloudsql_edges
+from collectors.pubsub_collector import collect_pubsub_resources, build_pubsub_edges
 from collectors.users_groups_collector import collect_users_and_groups, analyze_users_groups_privilege_escalation, build_users_groups_edges
 from collectors.sa_key_analyzer import analyze_service_account_key_access, build_key_access_edges
 from collectors.privesc_analyzer import GCPPrivilegeEscalationAnalyzer, check_workspace_admin_status
@@ -343,6 +346,31 @@ For more authentication details: https://cloud.google.com/docs/authentication
             except Exception as e:
                 handle_api_error(e, "GKE enumeration", args)
 
+        cloud_functions = []
+        if capabilities.get("Cloud Functions"):
+            try:
+                cloud_functions = collect_cloud_functions(creds, projects)
+                if args.verbose:
+                    print(f"[+] Found {len(cloud_functions)} Cloud Functions")
+            except Exception as e:
+                handle_api_error(e, "Cloud Functions enumeration", args)
+
+        cloudsql_instances = []
+        if capabilities.get("Cloud SQL"):
+            try:
+                cloudsql_instances = collect_cloudsql_instances(creds, projects)
+                if args.verbose:
+                    print(f"[+] Found {len(cloudsql_instances)} Cloud SQL instances")
+            except Exception as e:
+                handle_api_error(e, "Cloud SQL enumeration", args)
+
+        pubsub_topics, pubsub_subscriptions = [], []
+        if capabilities.get("Pub/Sub"):
+            try:
+                pubsub_topics, pubsub_subscriptions = collect_pubsub_resources(creds, projects)
+            except Exception as e:
+                handle_api_error(e, "Pub/Sub enumeration", args)
+
         log_sinks, log_buckets, log_metrics = [], [], []
         if capabilities.get("Logging"):
             try:
@@ -600,11 +628,16 @@ For more authentication details: https://cloud.google.com/docs/authentication
                 escalation_edges = privesc_analyzer.build_escalation_edges(user)
                 
             folder_edges = build_folder_edges(folders, folder_hierarchy, projects)
+
+            cloudsql_edges = build_cloudsql_edges(cloudsql_instances, user) if cloudsql_instances else []
+            cloudfunction_edges = build_cloudfunctions_edges(cloud_functions, user) if cloud_functions else []
+            pubsub_edges = build_pubsub_edges(pubsub_topics, pubsub_subscriptions, user) if (pubsub_topics or pubsub_subscriptions) else []
             
             # Include logging edges
-            all_edges = base_edges + key_access_edges + secret_access_edges + sa_permission_edges + compute_edges + gke_edges + users_groups_edges + logging_edges + escalation_edges + folder_edges
-            #all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + gke_edges + users_groups_edges + logging_edges + escalation_edges + folder_edges
-            #all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + bigquery_edges + gke_edges + users_groups_edges + logging_edges + escalation_edges + folder_edges
+            all_edges = (base_edges + key_access_edges + secret_access_edges + sa_permission_edges
+                         + compute_edges + gke_edges + users_groups_edges + logging_edges
+                         + escalation_edges + folder_edges
+                         + cloudsql_edges + cloudfunction_edges + pubsub_edges)
             
             if args.verbose:
                 print(f"[*] Built {len(all_edges)} total attack relationships")

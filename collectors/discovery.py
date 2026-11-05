@@ -282,7 +282,25 @@ def assess_enumeration_capabilities(project_apis):
         else:
             project_capabilities["Cloud Functions"] = False
             print(f"      {colorize('Cloud Functions', TerminalColors.RED)}    ✗")
-        
+
+        # Check Cloud SQL Admin API
+        if any('sqladmin.googleapis.com' in api or 'sql-component.googleapis.com' in api for api in apis):
+            capabilities["Cloud SQL"] = True
+            project_capabilities["Cloud SQL"] = True
+            print(f"      {colorize('Cloud SQL', TerminalColors.GREEN)}          ✓")
+        else:
+            project_capabilities["Cloud SQL"] = False
+            print(f"      {colorize('Cloud SQL', TerminalColors.RED)}          ✗")
+
+        # Check Pub/Sub API
+        if any('pubsub.googleapis.com' in api for api in apis):
+            capabilities["Pub/Sub"] = True
+            project_capabilities["Pub/Sub"] = True
+            print(f"      {colorize('Pub/Sub', TerminalColors.GREEN)}            ✓")
+        else:
+            project_capabilities["Pub/Sub"] = False
+            print(f"      {colorize('Pub/Sub', TerminalColors.RED)}            ✗")
+
         # Check Logging API for Logging resources
         if any('logging.googleapis.com' in api for api in apis):
             capabilities["Logging"] = True
