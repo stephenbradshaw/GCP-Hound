@@ -170,39 +170,3 @@ def assess_bucket_risk_level(bucket):
     else:
         return 'LOW'
 
-def analyze_bucket_access_patterns(buckets, service_accounts):
-
-    if not buckets:
-        return {"total": 0, "analysis": "No buckets to analyze"}
-    
-    analysis = {
-        "total": len(buckets),
-        "by_project": {},
-        "by_location": {},
-        "high_risk": 0,
-        "public_buckets": 0,
-        "encrypted_buckets": 0
-    }
-    
-    for bucket in buckets:
-        project_id = bucket.get('project', 'unknown')
-        location = bucket.get('location', 'unknown')
-        risk_level = bucket.get('riskLevel', 'LOW')
-        
-        # Count by project and location
-        analysis["by_project"][project_id] = analysis["by_project"].get(project_id, 0) + 1
-        analysis["by_location"][location] = analysis["by_location"].get(location, 0) + 1
-        
-        # Risk analysis
-        if risk_level == 'HIGH':
-            analysis["high_risk"] += 1
-            
-        # Public access analysis
-        if bucket.get('publicAccess') != 'enforced':
-            analysis["public_buckets"] += 1
-            
-        # Encryption analysis
-        if bucket.get('encryption'):
-            analysis["encrypted_buckets"] += 1
-    
-    return analysis

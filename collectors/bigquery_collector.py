@@ -443,8 +443,8 @@ def build_bigquery_edges(datasets, dataset_access_analysis, current_user):
                 "source": "bigquery_enumeration",
                 "datasetId": bq_dataset_id,
                 "fullDatasetId": full_dataset_id,
-                "tableCount": dataset['table_count'],
-                "riskLevel": dataset['riskLevel'],
+                "tableCount": dataset.get('table_count', 0),
+                "riskLevel": dataset.get('riskLevel', 'MEDIUM'),
                 "location": dataset.get('location', 'unknown'),
                 "hasTableExpiration": bool(dataset.get('default_table_expiration')),
                 "accessEntryCount": len(dataset.get('access_entries', []))

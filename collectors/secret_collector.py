@@ -389,63 +389,6 @@ def _assess_secret_risk(secret_info):
     """Legacy risk assessment function - kept for backward compatibility"""
     return assess_secret_risk_enhanced(secret_info)
 
-def collect_secrets_with_access_analysis(creds, projects, iam_data):
-    """
-    Enhanced wrapper that collects secrets and enriches them with access analysis.
-    
-    Args:
-        creds: GCP credentials
-        projects: List of project dictionaries
-        iam_data: List of IAM policy dictionaries for access analysis
-        
-    Returns:
-        List of enriched secret dictionaries with accessAnalysis metadata
-    """
-    print(f"\n{colorize('[*] COLLECTING SECRETS WITH ACCESS ANALYSIS...', TerminalColors.CYAN)}")
-    
-    # First collect all secrets
-    secrets = collect_secrets(creds, projects)
-    
-    if not secrets:
-        return secrets
-    
-    print(f"\n{colorize('[*] ANALYZING SECRET ACCESS PATTERNS...', TerminalColors.CYAN)}")
-    
-    # Enrich each secret with access analysis
-    enriched_secrets = []
-    access_summary = {
-        'secrets_with_access': 0,
-        'secrets_with_admin_access': 0,
-        'high_access_secrets': 0,
-        'total_access_relationships': 0
-    }
-    
-    for secret in secrets:
-        enriched_secret = assess_secret_access_privileges(secret, iam_data)
-        enriched_secrets.append(enriched_secret)
-        
-        # Update summary statistics
-        access_analysis = enriched_secret.get('accessAnalysis', {})
-        access_count = access_analysis.get('accessCount', 0)
-        
-        if access_count > 0:
-            access_summary['secrets_with_access'] += 1
-            access_summary['total_access_relationships'] += access_count
-            
-        if access_analysis.get('hasAdminAccess'):
-            access_summary['secrets_with_admin_access'] += 1
-            
-        if access_count > 3:
-            access_summary['high_access_secrets'] += 1
-    
-    # Print access analysis summary
-    print(f"\n{colorize('[+] SECRET ACCESS ANALYSIS SUMMARY:', TerminalColors.CYAN + TerminalColors.BOLD)}")
-    print(f"    {colorize('🔐 Secrets with Access:', TerminalColors.BLUE)} {colorize(str(access_summary['secrets_with_access']), TerminalColors.WHITE)}")
-    print(f"    {colorize('🚨 Secrets with Admin Access:', TerminalColors.RED)} {colorize(str(access_summary['secrets_with_admin_access']), TerminalColors.WHITE)}")
-    print(f"    {colorize('⚠ High Access Secrets (>3 identities):', TerminalColors.YELLOW)} {colorize(str(access_summary['high_access_secrets']), TerminalColors.WHITE)}")
-    print(f"    {colorize('🔗 Total Access Relationships:', TerminalColors.BLUE)} {colorize(str(access_summary['total_access_relationships']), TerminalColors.WHITE)}")
-    
-    return enriched_secrets
 
 def analyze_secret_access_privileges(creds, secrets, service_accounts):
     """

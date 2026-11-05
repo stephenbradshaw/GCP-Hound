@@ -627,7 +627,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
             key_access_edges = build_key_access_edges(sacs, key_analysis, user) if key_analysis else []
             secret_access_edges = build_secret_access_edges(secrets, secret_access_analysis, user) if secret_access_analysis else []
             compute_edges = build_compute_instance_edges(instances, instance_escalation_analysis, user) if instances else []
-            #bigquery_edges = build_bigquery_edges(bigquery_datasets, bigquery_access_analysis, user) if bigquery_datasets else []
+            bigquery_edges = build_bigquery_edges(bigquery_datasets, bigquery_access_analysis, user) if bigquery_datasets else []
             gke_edges = build_gke_edges(gke_clusters, gke_escalation_analysis, user) if gke_clusters else []
             users_groups_edges = (
                 build_users_groups_edges(users, groups, group_memberships, users_groups_escalation, user)
@@ -661,7 +661,8 @@ For more authentication details: https://cloud.google.com/docs/authentication
             all_edges = (base_edges + key_access_edges + secret_access_edges + sa_permission_edges
                          + compute_edges + gke_edges + users_groups_edges + logging_edges
                          + escalation_edges + folder_edges
-                         + cloudsql_edges + cloudfunction_edges + pubsub_edges)
+                         + cloudsql_edges + cloudfunction_edges + pubsub_edges
+                         + bigquery_edges)
             
             if args.verbose:
                 print(f"[*] Built {len(all_edges)} total attack relationships")
@@ -680,7 +681,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
         
         try:
             role_definitions = role_resolver.get_role_definitions()
-            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets, folders=folders, instances=instances, wi_pools=wi_pools, api_keys=api_keys, networking=networking, kms_keys=kms_keys, role_definitions=role_definitions)
+            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets, folders=folders, instances=instances, wi_pools=wi_pools, api_keys=api_keys, networking=networking, kms_keys=kms_keys, role_definitions=role_definitions, key_analysis=key_analysis)
 
             # Sidecar: full role -> permissions cache for offline analysis
             try:

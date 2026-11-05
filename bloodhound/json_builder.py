@@ -443,7 +443,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
     
     return edges
 
-def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None, instances=None, wi_pools=None, api_keys=None, networking=None, kms_keys=None, role_definitions=None):
+def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None, instances=None, wi_pools=None, api_keys=None, networking=None, kms_keys=None, role_definitions=None, key_analysis=None):
     """Export comprehensive GCP data to BloodHound JSON format using ONLY real enumerated data"""
     graph = OpenGraph()  # NO source_kind parameter
     
@@ -462,6 +462,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     networking = networking or ([], [], [])
     networks, subnets, firewalls = networking
     kms_keys = kms_keys or []
+    key_analysis = key_analysis or []
 
     if folders:
         print(f"[DEBUG] Including {len(folders)} folders")
@@ -1474,6 +1475,71 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                                    f"(ring: {kms_key.get('keyRing', '')})"
                 }
             })
+
+    # Service account key nodes from the key analyzer's enumeration
+    # (key metadata only — key material is not retrievable via the API).
+    # USER_MANAGED keys are the credential-management risk; age drives risk.
+    for analysis in key_analysis or []:
+        sa_email = (analysis.get('serviceAccount') or '').lower()
+        for key in analysis.get('existingKeys', []) or []:
+            key_name = (key.get('name') or '').lower()
+            if not key_name:
+                continue
+            key_type = key.get('keyType', '')
+            origin = key.get('origin', '')
+            valid_after = key.get('validAfterTime', '')
+            age_days = None
+            try:
+                from datetime import datetime, timezone
+                # e.g. "2024:01:02:10:00:00 +0000 UTC" — Google's odd format
+                raw = valid_after.replace(':', ' ', 1) if valid_after.count(':') >= 4 else valid_after
+                for fmt in ('%Y-%m-%dT%H:%M:%SZ', '%Y:%m:%d:%H:%M:%S %z %Z'):
+                    try:
+                        created = datetime.strptime(raw.strip(), fmt).replace(tzinfo=timezone.utc)
+                        age_days = (datetime.now(timezone.utc) - created).days
+                        break
+                    except ValueError:
+                        continue
+            except Exception:
+                age_days = None
+
+            if key_type == 'USER_MANAGED':
+                risk = 'HIGH' if (age_days or 0) > 90 else 'MEDIUM'
+            else:
+                risk = 'LOW'
+
+            if key_name not in graph.nodes:
+                key_properties = {
+                    "name": key_name,
+                    "displayname": key_name.rsplit('/', 1)[-1],
+                    "platform": "GCP",
+                    "description": f"GCP Service Account Key ({key_type})",
+                    "gcpResourceType": "Service Account Key",
+                    "keyType": key_type,
+                    "origin": origin,
+                    "validAfterTime": valid_after,
+                    "validBeforeTime": key.get('validBeforeTime', ''),
+                    "ageDays": age_days if age_days is not None else 'Unknown',
+                    "serviceAccount": sa_email,
+                    "riskLevel": risk,
+                }
+                graph.add_node(Node(
+                    id=key_name,
+                    kinds=["GCP_ServiceAccountKey", "GCP_Resource"],
+                    properties=Properties(**sanitize_node_properties(key_properties)),
+                ))
+            if sa_email:
+                edges.append({
+                    'start': {'value': sa_email},
+                    'end': {'value': key_name},
+                    'kind': 'Contains',
+                    'properties': {
+                        'source': 'sa_key_enumeration',
+                        'riskLevel': risk,
+                        'description': f"Service account {sa_email} has {key_type} key"
+                                       + (f" ({age_days} days old)" if age_days is not None else "")
+                    }
+                })
 
     # IAM role definitions for roles actually referenced in collected
     # bindings, so BloodHound consumers can see what each grant really

@@ -138,30 +138,3 @@ def analyze_service_account_privileges(service_accounts):
     
     return analysis
 
-def collect_service_accounts_with_analysis(creds, projects, include_analysis=True):
-    """
-    Enhanced wrapper that collects service accounts and optionally provides analysis.
-    
-    Args:
-        creds: Google Cloud credentials
-        projects: List of project dictionaries
-        include_analysis: Whether to perform privilege analysis (default: True)
-    
-    Returns:
-        Tuple of (service_accounts_list, analysis_dict)
-    """
-    service_accounts = collect_service_accounts(creds, projects)
-    
-    analysis = None
-    if include_analysis and service_accounts:
-        analysis = analyze_service_account_privileges(service_accounts)
-        
-        # Print analysis summary
-        print(f"\n[*] Service Account Analysis:")
-        print(f"    Total: {analysis['total']}")
-        print(f"    Google-managed: {analysis['google_managed']}")
-        print(f"    User-managed: {analysis['user_managed']}")
-        print(f"    Disabled: {analysis['disabled']}")
-        print(f"    Projects with SAs: {len(analysis['by_project'])}")
-    
-    return service_accounts, analysis
