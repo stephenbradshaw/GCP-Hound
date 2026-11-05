@@ -229,6 +229,14 @@
       "is_display_kind": true,
       "icon": "id-card",
       "color": "#FFC107"
+    },
+    {
+      "name": "GCP_Subnet",
+      "display_name": "GCP Subnet",
+      "description": "GCP-Hound node kind GCP_Subnet",
+      "is_display_kind": true,
+      "icon": "network-wired",
+      "color": "#00ACC1"
     }
   ],
   "relationship_kinds": [

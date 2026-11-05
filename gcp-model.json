@@ -382,6 +382,19 @@
         "displayname",
         "platform"
       ]
+    },
+    "GCP_Subnet": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "network-wired",
+        "color": "#00ACC1"
+      },
+      "display_property": "displayname",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "platform"
+      ]
     }
   }
 }

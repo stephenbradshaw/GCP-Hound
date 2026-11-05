@@ -443,7 +443,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
     
     return edges
 
-def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None, instances=None, wi_pools=None, api_keys=None):
+def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None, instances=None, wi_pools=None, api_keys=None, networking=None):
     """Export comprehensive GCP data to BloodHound JSON format using ONLY real enumerated data"""
     graph = OpenGraph()  # NO source_kind parameter
     
@@ -459,6 +459,8 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     instances = instances or []
     wi_pools = wi_pools or []
     api_keys = api_keys or []
+    networking = networking or ([], [], [])
+    networks, subnets, firewalls = networking
 
     if folders:
         print(f"[DEBUG] Including {len(folders)} folders")
@@ -1313,6 +1315,122 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                     'description': f"Project {project_id} contains API key "
                                    f"{api_key.get('displayName', api_key.get('keyId', ''))}"
                                    + (" without API/referrer restrictions" if unrestricted else "")
+                }
+            })
+
+    # VPC networking: networks, subnets and firewall rules as inventory
+    # nodes (containment edges only — no traversal implied).
+    for net in networks:
+        net_id = f"gcp-network-{(net.get('project') or '').lower()}-{(net.get('name') or '').lower()}"
+        if not net.get('name') or net_id in graph.nodes:
+            continue
+        project_id = (net.get('project') or '').lower()
+        graph.add_node(Node(
+            id=net_id,
+            kinds=["GCP_Network", "GCP_Resource"],
+            properties=Properties(**sanitize_node_properties({
+                "name": net_id,
+                "displayname": net.get('name', net_id),
+                "platform": "GCP",
+                "description": f"GCP VPC Network: {net.get('name', net_id)}",
+                "gcpResourceType": "VPC Network",
+                "networkName": net.get('name', ''),
+                "autoCreateSubnetworks": net.get('autoCreateSubnetworks', True),
+                "routingMode": net.get('routingMode', ''),
+                "project": project_id,
+                "riskLevel": "Unknown",
+            })),
+        ))
+        if project_id:
+            edges.append({
+                'start': {'value': project_id},
+                'end': {'value': net_id},
+                'kind': 'Contains',
+                'properties': {
+                    'source': 'networking_enumeration',
+                    'riskLevel': 'LOW',
+                    'description': f"Project {project_id} contains VPC network {net.get('name', '')}"
+                }
+            })
+
+    for subnet in subnets:
+        project_id = (subnet.get('project') or '').lower()
+        subnet_id = (f"gcp-subnet-{project_id}-{(subnet.get('region') or '').lower()}"
+                     f"-{(subnet.get('name') or '').lower()}")
+        if not subnet.get('name') or subnet_id in graph.nodes:
+            continue
+        graph.add_node(Node(
+            id=subnet_id,
+            kinds=["GCP_Subnet", "GCP_Resource"],
+            properties=Properties(**sanitize_node_properties({
+                "name": subnet_id,
+                "displayname": subnet.get('name', subnet_id),
+                "platform": "GCP",
+                "description": f"GCP Subnet: {subnet.get('name', subnet_id)}",
+                "gcpResourceType": "Subnet",
+                "region": subnet.get('region', ''),
+                "ipCidrRange": subnet.get('ipCidrRange', ''),
+                "gatewayAddress": subnet.get('gatewayAddress', ''),
+                "privateIpGoogleAccess": subnet.get('privateIpGoogleAccess', False),
+                "project": project_id,
+                "riskLevel": "Unknown",
+            })),
+        ))
+        network_name = (subnet.get('network') or '').lower()
+        if network_name:
+            parent_id = f"gcp-network-{project_id}-{network_name}"
+            edges.append({
+                'start': {'value': parent_id},
+                'end': {'value': subnet_id},
+                'kind': 'Contains',
+                'properties': {
+                    'source': 'networking_enumeration',
+                    'riskLevel': 'LOW',
+                    'description': f"Network {network_name} contains subnet "
+                                   f"{subnet.get('name', '')} ({subnet.get('ipCidrRange', '')})"
+                }
+            })
+
+    for fw in firewalls:
+        project_id = (fw.get('project') or '').lower()
+        fw_id = f"gcp-firewall-{project_id}-{(fw.get('name') or '').lower()}"
+        if not fw.get('name') or fw_id in graph.nodes:
+            continue
+        source_ranges = fw.get('sourceRanges') or []
+        open_ingress = (
+            not fw.get('disabled') and fw.get('direction') == 'INGRESS'
+            and '0.0.0.0/0' in source_ranges
+        )
+        graph.add_node(Node(
+            id=fw_id,
+            kinds=["GCP_Firewall", "GCP_Resource"],
+            properties=Properties(**sanitize_node_properties({
+                "name": fw_id,
+                "displayname": fw.get('name', fw_id),
+                "platform": "GCP",
+                "description": f"GCP Firewall Rule: {fw.get('name', fw_id)}",
+                "gcpResourceType": "Firewall Rule",
+                "direction": fw.get('direction', ''),
+                "disabled": fw.get('disabled', False),
+                "sourceRanges": source_ranges,
+                "targetTags": fw.get('targetTags', []),
+                "allowed": fw.get('allowedSummary', ''),
+                "project": project_id,
+                "riskLevel": "HIGH" if open_ingress else "LOW",
+            })),
+        ))
+        network_name = (fw.get('network') or '').lower()
+        if network_name:
+            parent_id = f"gcp-network-{project_id}-{network_name}"
+            edges.append({
+                'start': {'value': parent_id},
+                'end': {'value': fw_id},
+                'kind': 'Contains',
+                'properties': {
+                    'source': 'networking_enumeration',
+                    'riskLevel': 'HIGH' if open_ingress else 'LOW',
+                    'description': f"Network {network_name} contains firewall rule "
+                                   f"{fw.get('name', '')} ({fw.get('allowedSummary', '')})"
                 }
             })
 
