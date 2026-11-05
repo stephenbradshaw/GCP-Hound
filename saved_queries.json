@@ -132,6 +132,13 @@
       "category": "Inventory",
       "description": "Cloud KMS crypto keys with purpose and rotation metadata.",
       "query": "MATCH (k:GCP_KMSKey) RETURN k ORDER BY k.keyring"
+    },
+    {
+      "query_key": "GCP_run_service_access",
+      "name": "GCP: Cloud Run service invokers",
+      "category": "Attack Paths",
+      "description": "Principals who can invoke Cloud Run services (code execution as the service's runtime service account).",
+      "query": "MATCH p = (prin)-[:GCP_CanInvokeRunService]->(s:GCP_RunService) RETURN p"
     }
   ]
 }

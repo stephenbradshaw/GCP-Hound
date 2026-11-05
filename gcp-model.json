@@ -395,6 +395,19 @@
         "displayname",
         "platform"
       ]
+    },
+    "GCP_RunService": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "cloud",
+        "color": "#4285F4"
+      },
+      "display_property": "displayname",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "platform"
+      ]
     }
   }
 }

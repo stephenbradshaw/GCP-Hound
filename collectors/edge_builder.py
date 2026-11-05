@@ -437,6 +437,28 @@ def determine_resource_edge_kind(role, resource_type):
             if perm in perm_map:
                 return perm_map[perm]
         return None
+    if resource_type == 'runService':
+        # Invoking a Cloud Run service that runs as an SA yields code
+        # execution as that identity; admin roles can grant themselves
+        # invoker, so treat them equivalently.
+        if role_lower in ('roles/run.invoker', 'roles/run.admin',
+                          'roles/owner', 'roles/editor') \
+                or 'run.services.setiampolicy' in perms \
+                or 'run.routes.invoke' in perms \
+                or 'run.jobs.run' in perms:
+            return 'CanInvokeRunService'
+        return None
+    if resource_type == 'function':
+        if role_lower in ('roles/cloudfunctions.invoker', 'roles/cloudfunctions.developer',
+                          'roles/cloudfunctions.admin', 'roles/owner', 'roles/editor') \
+                or 'cloudfunctions.functions.invoke' in perms:
+            return 'CanAccessCloudFunction'
+        return None
+    if resource_type == 'computeInstance':
+        if role_lower in ('roles/compute.admin', 'roles/owner', 'roles/editor') \
+                or 'compute.instances.setserviceaccount' in perms:
+            return 'CanChangeInstanceServiceAccount'
+        return None
     # Other unmapped resource types have no meaningful edge kind.
     return None
 
@@ -517,6 +539,12 @@ def _iam_policy_target(iam_policy):
         return 'dataset', resource_name
     if resource_type == 'serviceaccount':
         return 'serviceAccount', resource_name
+    if resource_type == 'runservice':
+        return 'runService', resource_name
+    if resource_type == 'function':
+        return 'function', resource_name
+    if resource_type == 'computeinstance':
+        return 'computeInstance', resource_name
 
     project_id = (iam_policy.get('projectId') or '').lower()
     return 'project', project_id
@@ -581,11 +609,13 @@ def build_iam_binding_edges(iam_data, projects, debug=False):
                     continue
                 condition = None
 
-                # Resource-level IAM (buckets/secrets/datasets/SAs): only emit
-                # edges for roles with a meaningful attack-path relationship;
-                # the rest would overstate access. SA targets are covered by
-                # the privilege-escalation edge builder instead.
-                if resource_type in ('bucket', 'secret', 'dataset', 'serviceAccount'):
+                # Resource-level IAM (buckets/secrets/datasets/SAs/Run/
+                # functions/instances): only emit edges for roles with a
+                # meaningful attack-path relationship; the rest would
+                # overstate access. SA targets are covered by the
+                # privilege-escalation edge builder instead.
+                if resource_type in ('bucket', 'secret', 'dataset', 'serviceAccount',
+                                     'runService', 'function', 'computeInstance'):
                     if binding_condition(binding):
                         # No generic HasRoleOn* edge kind exists for these
                         # resource types; conditioned resource grants are
@@ -596,11 +626,22 @@ def build_iam_binding_edges(iam_data, projects, debug=False):
                     if not edge_kind:
                         edges_skipped += 1
                         continue
+                    # Normalize resource-level target ids to the canonical
+                    # node ids json_builder exports for these types.
                     if resource_type == 'dataset':
                         resource_name = normalize_dataset_id(resource_name) or ''
-                        if not resource_name:
-                            edges_skipped += 1
-                            continue
+                    elif resource_type == 'runService':
+                        resource_name = (f"gcp-run-service-{iam_policy.get('projectId', '')}"
+                                         f"-{iam_policy.get('location', '')}-{resource_name}").lower()
+                    elif resource_type == 'function':
+                        resource_name = (f"gcp-cloudfunction-{iam_policy.get('projectId', '')}"
+                                         f"-{iam_policy.get('location', '')}-{resource_name}").lower()
+                    elif resource_type == 'computeInstance':
+                        resource_name = (f"gcp-compute-instance-{iam_policy.get('projectId', '')}"
+                                         f"-{iam_policy.get('zone', '')}-{resource_name}").lower()
+                    if not resource_name:
+                        edges_skipped += 1
+                        continue
                 else:
                     edge_kind = determine_enhanced_edge_kind_from_role(role, resource_type)
                     condition = binding_condition(binding)

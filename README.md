@@ -303,7 +303,7 @@ After analysis completes:
 ## Enumerated Resources & Relationships
 
 <!-- BEGIN GENERATED GRAPH SCHEMA -->
-GCP-Hound currently registers **29 node kinds** and **57 relationship kinds** in the BloodHound OpenGraph extension schema:
+GCP-Hound currently registers **30 node kinds** and **58 relationship kinds** in the BloodHound OpenGraph extension schema:
 
 ### Node kinds
 
@@ -338,6 +338,7 @@ GCP-Hound currently registers **29 node kinds** and **57 relationship kinds** in
 | `GCP_WorkloadIdentityProvider` | random |
 | `GCP_ApiKey` | id-card |
 | `GCP_Subnet` | network-wired |
+| `GCP_RunService` | cloud |
 
 ### Relationship kinds
 
@@ -402,6 +403,7 @@ Edges marked **traversable** participate in BloodHound CE pathfinding; the rest 
 | `GCP_ManageProjectStorage` | yes |
 | `GCP_ManageProjectBigQuery` | yes |
 | `GCP_CanChangeInstanceServiceAccount` | yes |
+| `GCP_CanInvokeRunService` | yes |
 <!-- END GENERATED GRAPH SCHEMA -->
 
 

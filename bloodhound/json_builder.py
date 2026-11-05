@@ -1541,6 +1541,52 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                     }
                 })
 
+    # Cloud Run services discovered via CAI resource-level policies
+    # (no native Cloud Run collector yet). invoker/admin bindings on a
+    # service running as an SA are an execution path, so the service is
+    # materialized as a node with the run.invoker grant context.
+    for policy in iam_data or []:
+        if (policy.get('resourceType') or '') != 'runService':
+            continue
+        project_id = (policy.get('projectId') or '').lower()
+        location = (policy.get('location') or '').lower()
+        service_name = policy.get('resourceName', '')
+        if not service_name or not project_id:
+            continue
+        run_id = f"gcp-run-service-{project_id}-{location}-{service_name}".lower()
+        if run_id in graph.nodes:
+            continue
+        invokers = []
+        for binding in policy.get('bindings', []):
+            if binding.get('role', '').lower() in ('roles/run.invoker', 'roles/owner', 'roles/editor'):
+                invokers.extend(binding.get('members', []))
+        graph.add_node(Node(
+            id=run_id,
+            kinds=["GCP_RunService", "GCP_Resource"],
+            properties=Properties(**sanitize_node_properties({
+                "name": run_id,
+                "displayname": service_name,
+                "platform": "GCP",
+                "description": f"GCP Cloud Run Service: {service_name}",
+                "gcpResourceType": "Cloud Run Service",
+                "serviceName": service_name,
+                "location": location,
+                "project": project_id,
+                "invokerBindings": ", ".join(invokers) if invokers else "",
+                "riskLevel": "HIGH" if invokers else "Unknown",
+            })),
+        ))
+        edges.append({
+            'start': {'value': project_id},
+            'end': {'value': run_id},
+            'kind': 'Contains',
+            'properties': {
+                'source': 'cai_run_service',
+                'riskLevel': 'MEDIUM',
+                'description': f"Project {project_id} contains Cloud Run service {service_name}"
+            }
+        })
+
     # IAM role definitions for roles actually referenced in collected
     # bindings, so BloodHound consumers can see what each grant really
     # contains (custom roles especially). Only referenced roles are
@@ -1845,6 +1891,8 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             ("gcp-bq-table-", ["GCP_Resource"], "BigQuery Table"),
             ("gcp-cloudsql-", ["GCP_SQLInstance", "GCP_Resource"], "Cloud SQL Instance"),
             ("gcp-cloudfunction-", ["GCP_Function", "GCP_Resource"], "Cloud Function"),
+            ("gcp-run-service-", ["GCP_RunService", "GCP_Resource"], "Cloud Run Service"),
+            ("gcp-compute-instance-", ["GCP_Instance", "GCP_Resource"], "Compute Instance"),
         )
         for prefix, kinds, label in typed_resource_prefixes:
             if node_id.startswith(prefix):

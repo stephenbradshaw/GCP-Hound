@@ -237,6 +237,14 @@
       "is_display_kind": true,
       "icon": "network-wired",
       "color": "#00ACC1"
+    },
+    {
+      "name": "GCP_RunService",
+      "display_name": "GCP Cloud Run Service",
+      "description": "GCP-Hound node kind GCP_RunService",
+      "is_display_kind": true,
+      "icon": "cloud",
+      "color": "#4285F4"
     }
   ],
   "relationship_kinds": [
@@ -864,6 +872,15 @@
       "edge_knowledge": [
         {
           "content": "This `CanChangeInstanceServiceAccount` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+        }
+      ]
+    },
+    {
+      "name": "GCP_CanInvokeRunService",
+      "description": "GCP-Hound relationship CanInvokeRunService",
+      "edge_knowledge": [
+        {
+          "content": "This `CanInvokeRunService` edge represents the ability to invoke a Cloud Run service; combined with the service\u2019s runtime service account this yields code execution. Pathfinding treats it as traversable."
         }
       ]
     }

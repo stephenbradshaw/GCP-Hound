@@ -280,4 +280,50 @@ def _transform_cai_result(result):
             "source": "cai_search_all",
         }
 
+    # Cloud Run services and jobs
+    # //run.googleapis.com/projects/{p}/locations/{l}/services/{name}
+    if service == "run.googleapis.com" and len(parts) >= 6 \
+            and parts[0] == "projects" and parts[2] == "locations" \
+            and parts[4] in ("services", "jobs"):
+        return {
+            "resourceType": "runService",
+            "resourceName": parts[5],
+            "projectId": parts[1],
+            "location": parts[3],
+            "runKind": parts[4],  # 'services' or 'jobs'
+            "bindings": bindings,
+            "bindingCount": len(bindings),
+            "source": "cai_search_all",
+        }
+
+    # Cloud Functions (v1) function-level policies
+    # //cloudfunctions.googleapis.com/projects/{p}/locations/{l}/functions/{name}
+    if service == "cloudfunctions.googleapis.com" and len(parts) >= 6 \
+            and parts[0] == "projects" and parts[2] == "locations" \
+            and parts[4] == "functions":
+        return {
+            "resourceType": "function",
+            "resourceName": parts[5],
+            "projectId": parts[1],
+            "location": parts[3],
+            "bindings": bindings,
+            "bindingCount": len(bindings),
+            "source": "cai_search_all",
+        }
+
+    # Compute Engine instance-level policies
+    # //compute.googleapis.com/projects/{p}/zones/{z}/instances/{name}
+    if service == "compute.googleapis.com" and len(parts) >= 6 \
+            and parts[0] == "projects" and parts[2] == "zones" \
+            and parts[4] == "instances":
+        return {
+            "resourceType": "computeInstance",
+            "resourceName": parts[5],
+            "projectId": parts[1],
+            "zone": parts[3],
+            "bindings": bindings,
+            "bindingCount": len(bindings),
+            "source": "cai_search_all",
+        }
+
     return None
