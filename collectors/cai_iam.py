@@ -174,7 +174,9 @@ def _transform_cai_result(result):
     of being discarded. Returns None for anything else.
     """
     resource = result.get("resource") or ""
-    iam_policy = result.get("iamPolicy") or {}
+    # REST returns the policy under "policy" (proto field iam_policy); some
+    # response versions may use "iamPolicy" — accept both.
+    iam_policy = result.get("policy") or result.get("iamPolicy") or {}
     bindings = iam_policy.get("bindings", [])
     if not bindings:
         return None
