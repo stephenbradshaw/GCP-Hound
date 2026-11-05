@@ -227,10 +227,21 @@ def _transform_cai_result(result):
             }
         return None
 
-    if service == "storage.googleapis.com" and len(parts) >= 2 and parts[0] == "buckets":
+    if service == "storage.googleapis.com":
+        # CAI bucket resource paths are the bare bucket name
+        # (//storage.googleapis.com/{name}); accept the buckets/{name}
+        # form defensively.
+        if len(parts) == 1:
+            bucket_name = parts[0]
+        elif len(parts) >= 2 and parts[0] == "buckets":
+            bucket_name = parts[1]
+        else:
+            return None
+        if not bucket_name:
+            return None
         return {
             "resourceType": "bucket",
-            "resourceName": parts[1],
+            "resourceName": bucket_name,
             "bindings": bindings,
             "bindingCount": len(bindings),
             "source": "cai_search_all",
