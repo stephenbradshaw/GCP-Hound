@@ -30,6 +30,7 @@ from collectors.org_collector import collect_orgs, merge_orgs_from_folders
 from collectors.workload_identity_collector import collect_workload_identity
 from collectors.apikeys_collector import collect_api_keys
 from collectors import role_resolver
+from collectors.preflight import run_permission_preflight
 from collectors.folder_collector import collect_folders, build_folder_edges
 from collectors.logging_collector import collect_logging_resources, analyze_logging_access_privileges, build_logging_edges
 from bloodhound.json_builder import export_bloodhound_json
@@ -412,6 +413,13 @@ For more authentication details: https://cloud.google.com/docs/authentication
 
         # Folder parents still identify orgs when organizations.search is empty/broken
         orgs = merge_orgs_from_folders(orgs, folders)
+
+        # Pre-flight permission summary: surface missing grants before
+        # enumeration instead of per-collector 403 noise mid-run
+        try:
+            run_permission_preflight(creds, projects, orgs=orgs, folders=folders, args=args)
+        except Exception as e:
+            handle_api_error(e, "Permission preflight", args)
 
         # Role definitions (predefined + custom) so custom roles get real
         # privilege semantics in edge building / escalation analysis
