@@ -443,7 +443,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
     
     return edges
 
-def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None, instances=None, wi_pools=None, api_keys=None, networking=None):
+def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None, instances=None, wi_pools=None, api_keys=None, networking=None, kms_keys=None):
     """Export comprehensive GCP data to BloodHound JSON format using ONLY real enumerated data"""
     graph = OpenGraph()  # NO source_kind parameter
     
@@ -461,6 +461,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     api_keys = api_keys or []
     networking = networking or ([], [], [])
     networks, subnets, firewalls = networking
+    kms_keys = kms_keys or []
 
     if folders:
         print(f"[DEBUG] Including {len(folders)} folders")
@@ -1431,6 +1432,46 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                     'riskLevel': 'HIGH' if open_ingress else 'LOW',
                     'description': f"Network {network_name} contains firewall rule "
                                    f"{fw.get('name', '')} ({fw.get('allowedSummary', '')})"
+                }
+            })
+
+    # Cloud KMS crypto keys: inventory nodes attached to the project
+    # (decrypt capability is IAM-driven; no traversal edge is implied).
+    for kms_key in kms_keys:
+        key_path = (kms_key.get('name', '') or '').lower()
+        project_id = (kms_key.get('project', '') or '').lower()
+        if not key_path:
+            continue
+        if key_path not in graph.nodes:
+            graph.add_node(Node(
+                id=key_path,
+                kinds=["GCP_KMSKey", "GCP_Resource"],
+                properties=Properties(**sanitize_node_properties({
+                    "name": key_path,
+                    "displayname": kms_key.get('keyId', key_path),
+                    "platform": "GCP",
+                    "description": f"GCP KMS Crypto Key: {kms_key.get('keyId', key_path)}",
+                    "gcpResourceType": "KMS Crypto Key",
+                    "keyRing": kms_key.get('keyRing', ''),
+                    "purpose": kms_key.get('purpose', ''),
+                    "rotationPeriod": kms_key.get('rotationPeriod', ''),
+                    "primaryState": kms_key.get('primaryState', ''),
+                    "primaryAlgorithm": kms_key.get('primaryAlgorithm', ''),
+                    "project": project_id,
+                    "riskLevel": "Unknown",
+                })),
+            ))
+        if project_id:
+            edges.append({
+                'start': {'value': project_id},
+                'end': {'value': key_path},
+                'kind': 'Contains',
+                'properties': {
+                    'source': 'kms_enumeration',
+                    'riskLevel': 'LOW',
+                    'description': f"Project {project_id} contains KMS key "
+                                   f"{kms_key.get('keyId', '')} "
+                                   f"(ring: {kms_key.get('keyRing', '')})"
                 }
             })
 

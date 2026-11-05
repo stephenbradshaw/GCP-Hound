@@ -18,6 +18,7 @@ from collectors.cloudfunctions_collector import collect_cloud_functions, build_c
 from collectors.cloudsql_collector import collect_cloudsql_instances, build_cloudsql_edges
 from collectors.pubsub_collector import collect_pubsub_resources, build_pubsub_edges
 from collectors.networking_collector import collect_networking
+from collectors.kms_collector import collect_kms_keys
 from collectors.users_groups_collector import collect_users_and_groups, analyze_users_groups_privilege_escalation, build_users_groups_edges
 from collectors.sa_key_analyzer import analyze_service_account_key_access, build_key_access_edges
 from collectors.privesc_analyzer import GCPPrivilegeEscalationAnalyzer, check_workspace_admin_status
@@ -379,6 +380,12 @@ For more authentication details: https://cloud.google.com/docs/authentication
             except Exception as e:
                 handle_api_error(e, "Networking enumeration", args)
 
+        kms_keys = []
+        try:
+            kms_keys = collect_kms_keys(creds, projects, args)
+        except Exception as e:
+            handle_api_error(e, "KMS enumeration", args)
+
         log_sinks, log_buckets, log_metrics = [], [], []
         if capabilities.get("Logging"):
             try:
@@ -663,7 +670,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
             os.makedirs(args.output)
         
         try:
-            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets, folders=folders, instances=instances, wi_pools=wi_pools, api_keys=api_keys, networking=networking)
+            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets, folders=folders, instances=instances, wi_pools=wi_pools, api_keys=api_keys, networking=networking, kms_keys=kms_keys)
         except Exception as e:
             handle_api_error(e, "BloodHound export", args)
             output_file = None
