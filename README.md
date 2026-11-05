@@ -122,8 +122,9 @@ gcloud services enable admin.googleapis.com cloudresourcemanager.googleapis.com 
 * 🎨 **Professional BloodHound Integration** – Custom GCP icons and OpenGraph compatibility
 
 ### **Future Enhancements (Planned)**
-- [ ] **Pub/Sub Enumeration** - Topics, subscriptions, and messaging analysis
-- [ ] **Cloud Functions Deep Analysis** - Serverless function security assessment
+- [x] **Pub/Sub Enumeration** - Topics, subscriptions, and messaging analysis *(implemented)*
+- [x] **Cloud Functions Deep Analysis** - Serverless function security assessment *(implemented)*
+- [ ] **Cloud Run, App Engine, Spanner, Firestore, Cloud DNS, Dataflow, Composer, Cloud Tasks enumeration**
 
 ### 🚨 **Advanced Privilege Escalation Detection**
 - Service Account Key Analysis – Detect dangerous key creation/management permissions
@@ -269,7 +270,7 @@ automatically falls back to the standard getIamPolicy flow.
 
 
 ### **4. Import to BloodHound**
-- Generated file: `./output/gcp-bhopengraph.json`
+- Generated file: `./output/gcp-bhopgraph.json`
 - Upload via BloodHound UI file import
 - Explore interactive attack graphs
 
@@ -290,7 +291,7 @@ GCP-Hound performs analysis in **6 comprehensive phases**:
 
 After analysis completes:
 
-1. Locate the generated file: `./output/gcp-bhopengraph.json`
+1. Locate the generated file: `./output/gcp-bhopgraph.json`
 2. Open BloodHound web interface
 3. Navigate to "Data Collection" → "File Ingest"
 4. Upload the JSON file
@@ -300,48 +301,108 @@ After analysis completes:
 
 ## Enumerated Resources & Relationships
 
-### **GCP Node Types**
+<!-- BEGIN GENERATED GRAPH SCHEMA -->
+GCP-Hound currently registers **29 node kinds** and **57 relationship kinds** in the BloodHound OpenGraph extension schema:
 
-GCP-Hound currently enumerates **23 distinct GCP node types** across the Google Cloud ecosystem:
+### Node kinds
 
-| Category                  | Node Types                                               | Description                                            |
-|---------------------------|---------------------------------------------------------|--------------------------------------------------------|
-| **Identity & Access**     | `GCP_User`, `GCP_Group`, `GCP_ServiceAccount`, `GCP_ServiceAccountKey`, `GCP_GoogleManagedSA`,`GCP_CanSignBlob`, `GCP_CanSignJWT`  | User identities, groups, and service accounts          |
-| **Organization**          | `GCP_Project`, `GCPFolder`, `GCPOrganization`                           | Organizational structure and hierarchy                 |
-| **Compute & Containers**  | `GCPInstance`, `GCPCluster`, `GCPNode`                                 | Compute Engine VMs and GKE clusters                    |
-| **Storage & Data**        | `GCPBucket`, `GCPDataset`, `GCPSecret`, `GCPFunction`                 | Storage, BigQuery, Secret Manager, Cloud Functions     |
-| **Networking**            | `GCPNetwork`, `GCPVPC`, `GCPSubnet`, `GCPFirewall`, `GCPRole`         | Network infrastructure and roles                       |
-| **Additional Services**   | `GCPPubSubTopic`, `GCPCloudFunction`, `GCPKMSKey`                     | Messaging, serverless, and encryption                  |
-| **Logging & Monitoring**  | `GCPLogSink`, `GCPLogBucket`, `GCPLogMetric`                          | Logging sinks, log buckets, and log metrics            |
+| Node kind | Icon |
+|-----------|------|
+| `GCP_Bucket` | database |
+| `GCP_Cluster` | cubes |
+| `GCP_Dataset` | chart-bar |
+| `GCP_Firewall` | fire |
+| `GCP_Folder` | folder |
+| `GCP_Function` | code |
+| `GCP_GoogleManagedSA` | robot |
+| `GCP_Group` | users |
+| `GCP_Instance` | server |
+| `GCP_KMSKey` | lock |
+| `GCP_LogBucket` | inbox |
+| `GCP_LogMetric` | chart-line |
+| `GCP_LogSink` | stream |
+| `GCP_Network` | network-wired |
+| `GCP_Organization` | building |
+| `GCP_Principal` | circle |
+| `GCP_Project` | folder-open |
+| `GCP_PubSubTopic` | broadcast-tower |
+| `GCP_Resource` | circle |
+| `GCP_Role` | shield-alt |
+| `GCP_SQLInstance` | database |
+| `GCP_Secret` | key |
+| `GCP_ServiceAccount` | user-tie |
+| `GCP_ServiceAccountKey` | key |
+| `GCP_User` | user |
+| `GCP_WorkloadIdentityPool` | random |
+| `GCP_WorkloadIdentityProvider` | random |
+| `GCP_ApiKey` | id-card |
+| `GCP_Subnet` | network-wired |
 
+### Relationship kinds
 
-*Note: While `GCPPubSubTopic` is registered as a node type, **Pub/Sub enumeration is not yet implemented** in the current collectors.*
+Edges marked **traversable** participate in BloodHound CE pathfinding; the rest are inventory/context edges.
 
+| Relationship kind | Traversable |
+|--------------------|-------------|
+| `GCP_AdminTo` | yes |
+| `GCP_BelongsTo` |  |
+| `GCP_CanAccessBigQueryDataset` | yes |
+| `GCP_CanAccessCloudFunction` | yes |
+| `GCP_CanAccessCloudSQL` | yes |
+| `GCP_CanAccessLogStream` |  |
+| `GCP_CanAccessPubSub` | yes |
+| `GCP_CanCreateCloudFunction` | yes |
+| `GCP_CanCreateComputeInstance` | yes |
+| `GCP_CanCreateKeys` | yes |
+| `GCP_CanEscalateToAdmin` | yes |
+| `GCP_CanEscalateViaComputeInstance` | yes |
+| `GCP_CanEscalateViaGKECluster` | yes |
+| `GCP_CanEscalateViaGroup` | yes |
+| `GCP_CanGetAccessToken` | yes |
+| `GCP_CanImpersonate` | yes |
+| `GCP_CanListKeys` |  |
+| `GCP_CanModifyBucketPoliciesInProject` | yes |
+| `GCP_CanModifyBucketPolicy` | yes |
+| `GCP_CanModifyFolderPolicy` | yes |
+| `GCP_CanModifyIamPolicy` | yes |
+| `GCP_CanModifyOrganizationPolicy` | yes |
+| `GCP_CanModifyProjectPolicy` | yes |
+| `GCP_CanReadSecrets` | yes |
+| `GCP_CanReadSecretsInProject` | yes |
+| `GCP_CanSignBlob` | yes |
+| `GCP_CanSignJWT` | yes |
+| `GCP_CanViewSensitiveLogs` |  |
+| `GCP_CanWriteToLogSink` |  |
+| `GCP_Contains` |  |
+| `GCP_ContainsServiceAccount` |  |
+| `GCP_HasGoogleOwnedSA` |  |
+| `GCP_HasRoleOnFolder` | yes |
+| `GCP_HasRoleOnOrganization` | yes |
+| `GCP_HasRoleOnProject` | yes |
+| `GCP_HighPrivilegeServiceAccount` | yes |
+| `GCP_MemberOf` | yes |
+| `GCP_MemberOfFolder` | yes |
+| `GCP_MemberOfOrganization` | yes |
+| `GCP_MemberOfProject` | yes |
+| `GCP_OwnsDataset` |  |
+| `GCP_OwnsFolder` | yes |
+| `GCP_OwnsOrganization` | yes |
+| `GCP_OwnsProject` | yes |
+| `GCP_OwnsSecret` |  |
+| `GCP_OwnsStorageBucket` |  |
+| `GCP_RelatedTo` |  |
+| `GCP_SubscribesTo` |  |
+| `GCP_UsesServiceAccount` |  |
+| `GCP_AdministerProject` | yes |
+| `GCP_ManageProjectIAM` | yes |
+| `GCP_CanEditProject` | yes |
+| `GCP_CanViewProject` |  |
+| `GCP_ManageProjectCompute` | yes |
+| `GCP_ManageProjectStorage` | yes |
+| `GCP_ManageProjectBigQuery` | yes |
+| `GCP_CanChangeInstanceServiceAccount` | yes |
+<!-- END GENERATED GRAPH SCHEMA -->
 
-### **Attack Relationship Types**
-
-| Edge Type | Risk Level | Description |
-|-----------|------------|-------------|
-| `CanCreateKeys` | **CRITICAL** | Ability to create service account keys (direct privilege escalation) |
-| `CanImpersonate` | **HIGH** | Service account impersonation capabilities |
-| `CanReadSecrets` and `CanReadSecretsInProject`| **HIGH** | shows which account hold privileged access to secrets |
-| `CanListKeys` | **MEDIUM** | Ability to enumerate existing service account keys |
-| `ContainsServiceAccount` | **LOW** | Project ownership of service accounts |
-| `OwnsStorageBucket` | **MEDIUM** | Resource ownership relationships |
-| `HasGoogleOwnedSA` | **INFO** | Indicates that a GCP project relies on a Google-managed service account for certain internal operations or APIs. |
-| `CanModifyBucketPoliciesInProject` | **HIGH** | Indicates that an identity (user, SA) has permissions to modify storage bucket policies at the project scope, supporting privilege escalation scenarios. |
-| `BelongsTo` | **INFO** | Resource-to-project associations |
-
-### **Understanding Attack Paths**
-
-GCP-Hound focuses on discovering privilege escalation opportunities through:
-
-- **Service Account Key Creation** → Direct credential access → Full service account privileges
-- **Cross-Project Impersonation** → Privilege escalation across GCP projects  
-- **Storage Bucket Access** → Data exfiltration or modification capabilities
-- **BigQuery Data Access** → Sensitive data exposure and analysis
-
----
 
 ## 🎨 BloodHound Visualization
 
@@ -498,7 +559,7 @@ RETURN n, r, m LIMIT 100
 [*] Phase 6: BloodHound Integration
 ✅ Generated OpenGraph JSON with custom GCP icons
 ✅ FINAL RESULT: 10 nodes, 24 edges
-📁 File: ./output/gcp-bhopengraph.json
+📁 File: ./output/gcp-bhopgraph.json
 ```
 
 ---
@@ -534,9 +595,9 @@ Please feel free to:
 - [ ] Expand detail level for logging privilege analysis, relationship mapping
 
 ### **Upcoming Features**
-- [ ] **Pub/Sub & Messaging** - Topics, subscriptions, and Cloud Tasks enumeration
-- [ ] **Advanced Serverless** - Cloud Functions, Cloud Run, and App Engine analysis
-- [ ] **Enhanced Networking** - Load balancers, CDN, and interconnect discovery
+- [x] **Pub/Sub & Messaging** - Topics, subscriptions enumeration *(implemented; Cloud Tasks still planned)*
+- [x] **Cloud Functions** - Serverless function enumeration and analysis *(implemented; Cloud Run and App Engine still planned)*
+- [x] **Networking** - VPC networks, subnets, and firewall rules *(implemented; load balancers, CDN, and interconnect discovery still planned)*
 ---
 
 ## 🛠️ Project Structure
