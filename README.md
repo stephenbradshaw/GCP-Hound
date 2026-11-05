@@ -41,6 +41,7 @@ The tool may currently lack many advanced features, but I'm committed to gradual
 - **Org / folder IAM**: `roles/browser`, `organizationViewer`, and `folderViewer` can see hierarchy but **cannot** call `getIamPolicy`. Org/folder bindings require `*.getIamPolicy` (e.g. `roles/iam.securityReviewer` or a custom role).
 - **Environment Scope**: The tool has primarily been tested in lab and CTF settings. Results in large-scale or production GCP organizations may be incomplete or contain gaps.
 - **Edge/Description Accuracy**: Some edge relationship descriptions are generated heuristically and may be imprecise in certain contexts due to the diversity of real-world GCP configurations.
+- **Not collected (by design)** — the tool is strictly read-only and never reads secret material: SA key material (key metadata only), API key strings (metadata only), secret values, VM disk images/snapshots, org policy constraints (only the `orgpolicy.policy.set` escalation vector is probed), log content (sink/bucket/metric names only), billing data, and Workspace delegation/2SV detail beyond admin flags.
 
 ## Required permissions (least privilege)
 
