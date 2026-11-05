@@ -138,6 +138,11 @@ def has_role_definitions():
     return bool(_ROLE_DEFINITIONS)
 
 
+def get_role_definitions():
+    """Return the current role name -> permissions mapping (copy)."""
+    return dict(_ROLE_DEFINITIONS)
+
+
 def classify_role_by_permissions(perms):
     """Classify a role by its permission list: CRITICAL / HIGH / MEDIUM / LOW."""
     perms = set(perms or [])

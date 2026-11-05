@@ -5,6 +5,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 import argparse
+import json
 import logging
 import urllib3
 from collectors.discovery import discover_projects_comprehensive, discover_apis_for_projects, assess_enumeration_capabilities
@@ -670,7 +671,19 @@ For more authentication details: https://cloud.google.com/docs/authentication
             os.makedirs(args.output)
         
         try:
-            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets, folders=folders, instances=instances, wi_pools=wi_pools, api_keys=api_keys, networking=networking, kms_keys=kms_keys)
+            role_definitions = role_resolver.get_role_definitions()
+            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets, folders=folders, instances=instances, wi_pools=wi_pools, api_keys=api_keys, networking=networking, kms_keys=kms_keys, role_definitions=role_definitions)
+
+            # Sidecar: full role -> permissions cache for offline analysis
+            try:
+                if role_definitions:
+                    sidecar_path = os.path.splitext(output_file)[0] + '-roles.json'
+                    with open(sidecar_path, 'w') as f:
+                        json.dump(role_definitions, f, indent=1)
+                    if args.verbose:
+                        print(f"[+] Role definitions written to {sidecar_path}")
+            except Exception as e:
+                handle_api_error(e, "Role definitions sidecar export", args)
         except Exception as e:
             handle_api_error(e, "BloodHound export", args)
             output_file = None

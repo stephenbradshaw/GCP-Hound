@@ -443,7 +443,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
     
     return edges
 
-def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None, instances=None, wi_pools=None, api_keys=None, networking=None, kms_keys=None):
+def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None, folders=None, instances=None, wi_pools=None, api_keys=None, networking=None, kms_keys=None, role_definitions=None):
     """Export comprehensive GCP data to BloodHound JSON format using ONLY real enumerated data"""
     graph = OpenGraph()  # NO source_kind parameter
     
@@ -1474,6 +1474,40 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                                    f"(ring: {kms_key.get('keyRing', '')})"
                 }
             })
+
+    # IAM role definitions for roles actually referenced in collected
+    # bindings, so BloodHound consumers can see what each grant really
+    # contains (custom roles especially). Only referenced roles are
+    # exported to avoid flooding the graph with all ~2400 predefined roles.
+    role_definitions = role_definitions or {}
+    used_roles = set()
+    for policy in iam_data or []:
+        for binding in policy.get('bindings', []):
+            role = binding.get('role', '')
+            if role:
+                used_roles.add(role)
+    for role_name in sorted(used_roles):
+        if role_name in graph.nodes:
+            continue
+        perms = role_definitions.get(role_name, [])
+        is_custom = role_name.startswith(('organizations/', 'projects/'))
+        role_id = f"gcp-role-{role_name.lower()}"
+        graph.add_node(Node(
+            id=role_id,
+            kinds=["GCP_Role", "GCP_Resource"],
+            properties=Properties(**sanitize_node_properties({
+                "name": role_id,
+                "displayname": role_name,
+                "platform": "GCP",
+                "description": f"GCP IAM Role: {role_name}",
+                "gcpResourceType": "IAM Role",
+                "roleName": role_name,
+                "roleType": "custom" if is_custom else "predefined",
+                "permissionCount": len(perms),
+                "permissions": ", ".join(perms) if perms else "Unknown (not resolved)",
+                "riskLevel": "Unknown",
+            })),
+        ))
 
     # Add secret nodes using ONLY real enumerated data (secrets were
     # collected but never exported as nodes). Edge builders reference
