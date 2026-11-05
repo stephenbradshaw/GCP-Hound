@@ -245,6 +245,38 @@
       "is_display_kind": true,
       "icon": "cloud",
       "color": "#4285F4"
+    },
+    {
+      "name": "GCP_Disk",
+      "display_name": "GCP Disk",
+      "description": "GCP-Hound node kind GCP_Disk",
+      "is_display_kind": true,
+      "icon": "hdd",
+      "color": "#607D8B"
+    },
+    {
+      "name": "GCP_Snapshot",
+      "display_name": "GCP Snapshot",
+      "description": "GCP-Hound node kind GCP_Snapshot",
+      "is_display_kind": true,
+      "icon": "camera",
+      "color": "#795548"
+    },
+    {
+      "name": "GCP_Image",
+      "display_name": "GCP Image",
+      "description": "GCP-Hound node kind GCP_Image",
+      "is_display_kind": true,
+      "icon": "file-image",
+      "color": "#8D6E63"
+    },
+    {
+      "name": "GCP_ArtifactRepo",
+      "display_name": "GCP Artifact Repository",
+      "description": "GCP-Hound node kind GCP_ArtifactRepo",
+      "is_display_kind": true,
+      "icon": "box",
+      "color": "#009688"
     }
   ],
   "relationship_kinds": [
@@ -883,6 +915,28 @@
           "content": "This `CanInvokeRunService` edge represents the ability to invoke a Cloud Run service; combined with the service\u2019s runtime service account this yields code execution. Pathfinding treats it as traversable."
         }
       ]
+    },
+    {
+      "name": "GCP_CanDecrypt",
+      "description": "GCP-Hound relationship CanDecrypt",
+      "edge_knowledge": [
+        {
+          "content": "This `CanDecrypt` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+        }
+      ]
+    },
+    {
+      "name": "GCP_CanPublishPubSub",
+      "description": "GCP-Hound relationship CanPublishPubSub",
+      "edge_knowledge": [
+        {
+          "content": "This `CanPublishPubSub` edge represents a control-taking or high-value privilege relationship discovered by GCP-Hound. Pathfinding treats it as traversable."
+        }
+      ]
+    },
+    {
+      "name": "GCP_HasResourceRole",
+      "description": "GCP-Hound relationship HasResourceRole"
     }
   ],
   "environments": [

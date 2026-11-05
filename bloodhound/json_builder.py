@@ -1893,6 +1893,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             ("gcp-cloudfunction-", ["GCP_Function", "GCP_Resource"], "Cloud Function"),
             ("gcp-run-service-", ["GCP_RunService", "GCP_Resource"], "Cloud Run Service"),
             ("gcp-compute-instance-", ["GCP_Instance", "GCP_Resource"], "Compute Instance"),
+            ("gcp-disk-", ["GCP_Disk", "GCP_Resource"], "Compute Disk"),
+            ("gcp-snapshot-", ["GCP_Snapshot", "GCP_Resource"], "Compute Snapshot"),
+            ("gcp-image-", ["GCP_Image", "GCP_Resource"], "Compute Image"),
+            ("gcp-artifact-repo-", ["GCP_ArtifactRepo", "GCP_Resource"], "Artifact Registry Repository"),
         )
         for prefix, kinds, label in typed_resource_prefixes:
             if node_id.startswith(prefix):

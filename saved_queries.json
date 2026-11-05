@@ -139,6 +139,20 @@
       "category": "Attack Paths",
       "description": "Principals who can invoke Cloud Run services (code execution as the service's runtime service account).",
       "query": "MATCH p = (prin)-[:GCP_CanInvokeRunService]->(s:GCP_RunService) RETURN p"
+    },
+    {
+      "query_key": "GCP_kms_decrypt",
+      "name": "GCP: KMS decrypt access",
+      "category": "Attack Paths",
+      "description": "Principals who can decrypt with KMS crypto keys (access to everything encrypted with them, e.g. CMEK-protected secrets and disks).",
+      "query": "MATCH p = (prin)-[:GCP_CanDecrypt]->(k:GCP_KMSKey) RETURN p"
+    },
+    {
+      "query_key": "GCP_resource_level_roles",
+      "name": "GCP: Resource-level IAM grants (inventory)",
+      "category": "IAM",
+      "description": "All resource-level IAM grants (disks, snapshots, images, KMS, Pub/Sub, tables, sinks, artifact repos) that have no direct attack edge.",
+      "query": "MATCH p = (prin)-[:GCP_HasResourceRole]->(r) RETURN p"
     }
   ]
 }

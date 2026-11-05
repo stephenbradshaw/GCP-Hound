@@ -408,6 +408,58 @@
         "displayname",
         "platform"
       ]
+    },
+    "GCP_Disk": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "hdd",
+        "color": "#607D8B"
+      },
+      "display_property": "displayname",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "platform"
+      ]
+    },
+    "GCP_Snapshot": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "camera",
+        "color": "#795548"
+      },
+      "display_property": "displayname",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "platform"
+      ]
+    },
+    "GCP_Image": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "file-image",
+        "color": "#8D6E63"
+      },
+      "display_property": "displayname",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "platform"
+      ]
+    },
+    "GCP_ArtifactRepo": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "box",
+        "color": "#009688"
+      },
+      "display_property": "displayname",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "platform"
+      ]
     }
   }
 }

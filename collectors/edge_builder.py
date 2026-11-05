@@ -454,11 +454,58 @@ def determine_resource_edge_kind(role, resource_type):
                 or 'cloudfunctions.functions.invoke' in perms:
             return 'CanAccessCloudFunction'
         return None
+    if resource_type == 'kmsKey':
+        # Decrypt on a key = access to everything encrypted with it
+        if role_lower in ('roles/owner', 'roles/editor', 'roles/cloudkms.admin',
+                          'roles/cloudkms.cryptokeydecrypter') \
+                or 'cloudkms.cryptokeyversions.decrypt' in perms \
+                or 'cloudkms.cryptokeys.setiampolicy' in perms:
+            return 'CanDecrypt'
+        return 'HasResourceRole'
+    if resource_type == 'kmsKeyRing':
+        return 'HasResourceRole'
+    if resource_type in ('disk', 'snapshot', 'image'):
+        # Snapshot/image read access is an exfil path but requires
+        # compute permissions beyond plain IAM on the object; keep as
+        # inventory rather than implying traversal.
+        return 'HasResourceRole'
+    if resource_type == 'pubsubTopic':
+        if role_lower in ('roles/owner', 'roles/editor', 'roles/pubsub.publisher',
+                          'roles/pubsub.editor', 'roles/pubsub.admin') \
+                or 'pubsub.topics.publish' in perms:
+            return 'CanPublishPubSub'
+        if role_lower in ('roles/pubsub.subscriber', 'roles/pubsub.viewer') \
+                or 'pubsub.topics.attachsubscription' in perms:
+            return 'CanAccessPubSub'
+        return 'HasResourceRole'
+    if resource_type == 'pubsubSub':
+        if role_lower in ('roles/owner', 'roles/editor', 'roles/pubsub.subscriber',
+                          'roles/pubsub.viewer', 'roles/pubsub.admin') \
+                or 'pubsub.subscriptions.consume' in perms:
+            return 'CanAccessPubSub'
+        return 'HasResourceRole'
+    if resource_type == 'bqTable':
+        return 'HasResourceRole'
+    if resource_type == 'logSink':
+        if role_lower in ('roles/owner', 'roles/editor', 'roles/logging.admin',
+                          'roles/logging.configwriter') \
+                or any(p.startswith('logging.sinks.') for p in perms):
+            return 'CanWriteToLogSink'
+        return 'HasResourceRole'
+    if resource_type == 'logBucket':
+        if role_lower in ('roles/owner', 'roles/editor', 'roles/logging.admin',
+                          'roles/logging.viewermanager', 'roles/logging.privatelogviewer',
+                          'roles/logging.viewer') \
+                or any(p.startswith('logging.buckets.') for p in perms):
+            return 'CanViewSensitiveLogs'
+        return 'HasResourceRole'
+    if resource_type == 'artifactRepo':
+        return 'HasResourceRole'
     if resource_type == 'computeInstance':
         if role_lower in ('roles/compute.admin', 'roles/owner', 'roles/editor') \
                 or 'compute.instances.setserviceaccount' in perms:
             return 'CanChangeInstanceServiceAccount'
-        return None
+        return 'HasResourceRole'
     # Other unmapped resource types have no meaningful edge kind.
     return None
 
@@ -531,20 +578,13 @@ def _iam_policy_target(iam_policy):
     if resource_type == 'folder' or iam_policy.get('folderId'):
         folder_id = iam_policy.get('folderId') or resource_name.replace('folders/', '')
         return 'folder', resource_name or f'folders/{folder_id}'
-    if resource_type == 'bucket':
-        return 'bucket', resource_name
-    if resource_type == 'secret':
-        return 'secret', resource_name
-    if resource_type == 'dataset':
-        return 'dataset', resource_name
-    if resource_type == 'serviceaccount':
-        return 'serviceAccount', resource_name
-    if resource_type == 'runservice':
-        return 'runService', resource_name
-    if resource_type == 'function':
-        return 'function', resource_name
-    if resource_type == 'computeinstance':
-        return 'computeInstance', resource_name
+    # Resource-level types collected via Cloud Asset Inventory
+    for rt in ('bucket', 'secret', 'dataset', 'serviceAccount', 'runService',
+               'function', 'computeInstance', 'kmsKey', 'kmsKeyRing', 'disk',
+               'snapshot', 'image', 'pubsubTopic', 'pubsubSub', 'bqTable',
+               'logSink', 'logBucket', 'artifactRepo'):
+        if resource_type == rt.lower():
+            return rt, resource_name
 
     project_id = (iam_policy.get('projectId') or '').lower()
     return 'project', project_id
@@ -609,17 +649,16 @@ def build_iam_binding_edges(iam_data, projects, debug=False):
                     continue
                 condition = None
 
-                # Resource-level IAM (buckets/secrets/datasets/SAs/Run/
-                # functions/instances): only emit edges for roles with a
-                # meaningful attack-path relationship; the rest would
-                # overstate access. SA targets are covered by the
-                # privilege-escalation edge builder instead.
+                # Resource-level IAM: only mapped resource types produce
+                # edges (strong kinds where an attack relationship exists,
+                # GCP_HasResourceRole inventory otherwise); conditioned
+                # resource grants are skipped rather than mislabeled.
                 if resource_type in ('bucket', 'secret', 'dataset', 'serviceAccount',
-                                     'runService', 'function', 'computeInstance'):
+                                     'runService', 'function', 'computeInstance',
+                                     'kmsKey', 'kmsKeyRing', 'disk', 'snapshot',
+                                     'image', 'pubsubTopic', 'pubsubSub', 'bqTable',
+                                     'logSink', 'logBucket', 'artifactRepo'):
                     if binding_condition(binding):
-                        # No generic HasRoleOn* edge kind exists for these
-                        # resource types; conditioned resource grants are
-                        # skipped rather than mislabeled.
                         edges_skipped += 1
                         continue
                     edge_kind = determine_resource_edge_kind(role, resource_type)
@@ -628,17 +667,46 @@ def build_iam_binding_edges(iam_data, projects, debug=False):
                         continue
                     # Normalize resource-level target ids to the canonical
                     # node ids json_builder exports for these types.
+                    policy_project = (iam_policy.get('projectId', '') or '').lower()
+                    policy_location = (iam_policy.get('location', '') or '').lower()
                     if resource_type == 'dataset':
                         resource_name = normalize_dataset_id(resource_name) or ''
                     elif resource_type == 'runService':
-                        resource_name = (f"gcp-run-service-{iam_policy.get('projectId', '')}"
-                                         f"-{iam_policy.get('location', '')}-{resource_name}").lower()
+                        resource_name = (f"gcp-run-service-{policy_project}"
+                                         f"-{policy_location}-{resource_name}").lower()
                     elif resource_type == 'function':
-                        resource_name = (f"gcp-cloudfunction-{iam_policy.get('projectId', '')}"
-                                         f"-{iam_policy.get('location', '')}-{resource_name}").lower()
+                        resource_name = (f"gcp-cloudfunction-{policy_project}"
+                                         f"-{policy_location}-{resource_name}").lower()
                     elif resource_type == 'computeInstance':
-                        resource_name = (f"gcp-compute-instance-{iam_policy.get('projectId', '')}"
-                                         f"-{iam_policy.get('zone', '')}-{resource_name}").lower()
+                        resource_name = (f"gcp-compute-instance-{policy_project}"
+                                         f"-{(iam_policy.get('zone', '') or '').lower()}"
+                                         f"-{resource_name}")
+                    elif resource_type == 'disk':
+                        resource_name = (f"gcp-disk-{policy_project}"
+                                         f"-{(iam_policy.get('zone', '') or '').lower()}"
+                                         f"-{resource_name}")
+                    elif resource_type == 'kmsKey':
+                        resource_name = resource_name.lower()
+                    elif resource_type == 'kmsKeyRing':
+                        resource_name = resource_name.lower()
+                    elif resource_type == 'snapshot':
+                        resource_name = f"gcp-snapshot-{policy_project}-{resource_name}".lower()
+                    elif resource_type == 'image':
+                        resource_name = f"gcp-image-{policy_project}-{resource_name}".lower()
+                    elif resource_type == 'pubsubTopic':
+                        resource_name = f"gcp-pubsub-topic-{policy_project}-{resource_name}".lower()
+                    elif resource_type == 'pubsubSub':
+                        resource_name = (f"gcp-pubsub-subscription-{policy_project}"
+                                         f"-{resource_name}").lower()
+                    elif resource_type == 'bqTable':
+                        resource_name = f"gcp-bq-table-{resource_name}".lower()
+                    elif resource_type == 'logSink':
+                        resource_name = f"{policy_project}-sink-{resource_name}"
+                    elif resource_type == 'logBucket':
+                        resource_name = f"{policy_project}-bucket-{resource_name}"
+                    elif resource_type == 'artifactRepo':
+                        resource_name = (f"gcp-artifact-repo-{policy_project}"
+                                         f"-{policy_location}-{resource_name}").lower()
                     if not resource_name:
                         edges_skipped += 1
                         continue

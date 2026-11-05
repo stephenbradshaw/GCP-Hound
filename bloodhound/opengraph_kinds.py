@@ -110,6 +110,9 @@ EDGE_KIND_MAP = {
     "ManageProjectBigQuery": "GCP_ManageProjectBigQuery",
     "CanChangeInstanceServiceAccount": "GCP_CanChangeInstanceServiceAccount",
     "CanInvokeRunService": "GCP_CanInvokeRunService",
+    "CanDecrypt": "GCP_CanDecrypt",
+    "CanPublishPubSub": "GCP_CanPublishPubSub",
+    "HasResourceRole": "GCP_HasResourceRole",
 }
 
 # Edges that represent control-taking for pathfinding.
@@ -150,6 +153,8 @@ TRAVERSABLE_EDGE_KINDS = {
     "GCP_ManageProjectBigQuery",
     "GCP_CanChangeInstanceServiceAccount",
     "GCP_CanInvokeRunService",
+    "GCP_CanDecrypt",
+    "GCP_CanPublishPubSub",
     # Identity / role reachability (AD MemberOf equivalent + IAM grants)
     "GCP_MemberOf",
     "GCP_MemberOfProject",

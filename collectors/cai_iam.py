@@ -247,7 +247,7 @@ def _transform_cai_result(result):
             "source": "cai_search_all",
         }
 
-    if service == "secretmanager.googleapis.com" and len(parts) >= 4 \
+    if service == "secretmanager.googleapis.com" and len(parts) == 4 \
             and parts[0] == "projects" and parts[2] == "secrets":
         return {
             "resourceType": "secret",
@@ -258,7 +258,7 @@ def _transform_cai_result(result):
             "source": "cai_search_all",
         }
 
-    if service == "bigquery.googleapis.com" and len(parts) >= 4 \
+    if service == "bigquery.googleapis.com" and len(parts) == 4 \
             and parts[0] == "projects" and parts[2] == "datasets":
         return {
             "resourceType": "dataset",
@@ -315,12 +315,122 @@ def _transform_cai_result(result):
     # //compute.googleapis.com/projects/{p}/zones/{z}/instances/{name}
     if service == "compute.googleapis.com" and len(parts) >= 6 \
             and parts[0] == "projects" and parts[2] == "zones" \
-            and parts[4] == "instances":
+            and parts[4] in ("instances", "disks"):
         return {
-            "resourceType": "computeInstance",
+            "resourceType": "computeInstance" if parts[4] == "instances" else "disk",
             "resourceName": parts[5],
             "projectId": parts[1],
             "zone": parts[3],
+            "bindings": bindings,
+            "bindingCount": len(bindings),
+            "source": "cai_search_all",
+        }
+
+    # Compute Engine global resources (snapshots, images, disks)
+    # //compute.googleapis.com/projects/{p}/global/{kind}/{name}
+    if service == "compute.googleapis.com" and len(parts) >= 5 \
+            and parts[0] == "projects" and parts[2] == "global" \
+            and parts[3] in ("snapshots", "images", "disks"):
+        kind = {"snapshots": "snapshot", "images": "image", "disks": "disk"}[parts[3]]
+        return {
+            "resourceType": kind,
+            "resourceName": parts[4],
+            "projectId": parts[1],
+            "bindings": bindings,
+            "bindingCount": len(bindings),
+            "source": "cai_search_all",
+        }
+
+    # Pub/Sub topics and subscriptions
+    # //pubsub.googleapis.com/projects/{p}/{topics|subscriptions}/{name}
+    if service == "pubsub.googleapis.com" and len(parts) >= 4 \
+            and parts[0] == "projects" \
+            and parts[2] in ("topics", "subscriptions"):
+        return {
+            "resourceType": "pubsubTopic" if parts[2] == "topics" else "pubsubSub",
+            "resourceName": parts[3],
+            "projectId": parts[1],
+            "bindings": bindings,
+            "bindingCount": len(bindings),
+            "source": "cai_search_all",
+        }
+
+    # BigQuery table-level policies (nested: wins over the dataset match)
+    # //bigquery.googleapis.com/projects/{p}/datasets/{d}/tables/{t}
+    if service == "bigquery.googleapis.com" and len(parts) >= 6 \
+            and parts[0] == "projects" and parts[2] == "datasets" \
+            and parts[4] == "tables":
+        return {
+            "resourceType": "bqTable",
+            "resourceName": f"{parts[1]}:{parts[3]}.{parts[5]}",
+            "projectId": parts[1],
+            "bindings": bindings,
+            "bindingCount": len(bindings),
+            "source": "cai_search_all",
+        }
+
+    # Logging sinks and log buckets
+    # //logging.googleapis.com/projects/{p}/sinks/{name}
+    # //logging.googleapis.com/projects/{p}/locations/{l}/buckets/{name}
+    if service == "logging.googleapis.com" and parts[0] == "projects":
+        if len(parts) >= 4 and parts[2] == "sinks":
+            return {
+                "resourceType": "logSink",
+                "resourceName": parts[3],
+                "projectId": parts[1],
+                "bindings": bindings,
+                "bindingCount": len(bindings),
+                "source": "cai_search_all",
+            }
+        if len(parts) >= 6 and parts[2] == "locations" and parts[4] == "buckets":
+            return {
+                "resourceType": "logBucket",
+                "resourceName": parts[5],
+                "projectId": parts[1],
+                "location": parts[3],
+                "bindings": bindings,
+                "bindingCount": len(bindings),
+                "source": "cai_search_all",
+            }
+
+    # Artifact Registry repositories
+    # //artifactregistry.googleapis.com/projects/{p}/locations/{l}/repositories/{name}
+    if service == "artifactregistry.googleapis.com" and len(parts) >= 6 \
+            and parts[0] == "projects" and parts[2] == "locations" \
+            and parts[4] == "repositories":
+        return {
+            "resourceType": "artifactRepo",
+            "resourceName": parts[5],
+            "projectId": parts[1],
+            "location": parts[3],
+            "bindings": bindings,
+            "bindingCount": len(bindings),
+            "source": "cai_search_all",
+        }
+
+    # KMS crypto keys (nested under keyRings — wins over the key ring)
+    # //cloudkms.googleapis.com/projects/{p}/locations/{l}/keyRings/{r}/cryptoKeys/{k}
+    if service == "cloudkms.googleapis.com" and len(parts) >= 8 \
+            and parts[0] == "projects" and parts[2] == "locations" \
+            and parts[4] == "keyRings" and parts[6] == "cryptoKeys":
+        return {
+            "resourceType": "kmsKey",
+            "resourceName": f"projects/{parts[1]}/locations/{parts[3]}"
+                            f"/keyRings/{parts[5]}/cryptoKeys/{parts[7]}",
+            "projectId": parts[1],
+            "bindings": bindings,
+            "bindingCount": len(bindings),
+            "source": "cai_search_all",
+        }
+
+    # KMS key rings (no direct attack edge; inventory via HasResourceRole)
+    if service == "cloudkms.googleapis.com" and len(parts) >= 6 \
+            and parts[0] == "projects" and parts[2] == "locations" \
+            and parts[4] == "keyRings":
+        return {
+            "resourceType": "kmsKeyRing",
+            "resourceName": f"projects/{parts[1]}/locations/{parts[3]}/keyRings/{parts[5]}",
+            "projectId": parts[1],
             "bindings": bindings,
             "bindingCount": len(bindings),
             "source": "cai_search_all",
